@@ -6,6 +6,8 @@ package cmd
 import (
 	"os"
 
+	"github.com/madmaxieee/loglit/internal/config"
+	"github.com/madmaxieee/loglit/internal/theme"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +21,18 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		println("hello loglit")
+		cfg := config.GetDefaultConfig()
+		th := theme.GetDefaultTheme()
+
+		for _, hl := range cfg.Highlight {
+			th.Insert(hl)
+		}
+
+		err := th.ResolveLinks()
+		if err != nil {
+			println("Error resolving theme links:", err.Error())
+			return
+		}
 	},
 }
 
