@@ -2,13 +2,14 @@ package config
 
 import (
 	"github.com/madmaxieee/loglit/internal/proto"
+	"github.com/madmaxieee/loglit/internal/style"
 	"github.com/madmaxieee/loglit/internal/utils"
 )
 
 var strPtr = utils.Ptr[string]
 
 type syntax = proto.Syntax
-type highlight = proto.Highlight
+type highlight = style.Highlight
 
 type Config struct {
 	Syntax    []syntax
@@ -65,6 +66,8 @@ var DefaultConfig = Config{
 			Group:   "LogSeparatorLine",
 			Pattern: proto.MustCompile(`(-{3,}|={3,}|#{3,}|\*{3,}|<{3,}|>{3,})`),
 		},
+
+		// TODO: regex for string
 
 		// " Strings
 		// " ------------------------------
@@ -166,7 +169,7 @@ var DefaultConfig = Config{
 		// Duration e.g. 10d20h30m40s, 123.456s, 123ms, 456us, 789ns
 		{
 			Group:   "LogDuration",
-			Pattern: proto.MustCompile(`\b((\d+d)?(\d+h)?(\d+m)?\d+(\.\d+)?[mun]?s)\b`),
+			Pattern: proto.MustCompile(`\b((\d+d)?(\d+h)?(\d+m)?\d+(\.\d+)?[µmun]?s)\b`),
 		},
 
 		// Objects
@@ -199,11 +202,13 @@ var DefaultConfig = Config{
 			Pattern: proto.MustCompile(`\b([0-9a-fA-F]{40}|[0-9a-fA-F]{56}|[0-9a-fA-F]{64}|[0-9a-fA-F]{96}|[0-9a-fA-F]{128})\b`),
 		},
 
-		// POSIX-style path    e.g. '/var/log/system.log', './run.sh', '../a/b', '~/c'.
-		{
-			Group:   "LogPath",
-			Pattern: proto.MustCompile(`(?:\/|\.{1,2}\/)?(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+\/?`),
-		},
+		// TODO: debug this regex
+
+		// // POSIX-style path    e.g. '/var/log/system.log', './run.sh', '../a/b', '~/c'.
+		// {
+		// 	Group:   "LogPath",
+		// 	Pattern: proto.MustCompile(`()`),
+		// },
 
 		// log levels
 		{
@@ -331,6 +336,7 @@ var DefaultConfig = Config{
 			Pattern: proto.MustCompile(`[A-Z_]+_TRACE\b`),
 		},
 	},
+
 	Highlight: []highlight{
 		{Group: "LogNumber", Link: strPtr("Number")},
 		{Group: "LogNumberFloat", Link: strPtr("Float")},

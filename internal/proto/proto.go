@@ -2,10 +2,6 @@ package proto
 
 import (
 	"regexp"
-
-	"github.com/madmaxieee/loglit/internal/style"
-	"github.com/madmaxieee/loglit/internal/utils"
-	"github.com/pelletier/go-toml/v2"
 )
 
 type Syntax struct {
@@ -38,33 +34,4 @@ func MustCompileAll(patterns ...string) []Pattern {
 		result = append(result, MustCompile(p))
 	}
 	return result
-}
-
-type Highlight struct {
-	Group     string
-	Link      *string
-	Fg        *string
-	Bg        *string
-	Italic    bool
-	Bold      bool
-	Underline bool
-}
-
-func (h *Highlight) UnmarshalText(text []byte) error {
-	err := toml.Unmarshal(text, h)
-	if err != nil {
-		return err
-	}
-	if h.Link == nil {
-		if h.Fg != nil {
-			h.Fg = utils.Ptr(style.FgHex(*h.Fg))
-		}
-		if h.Bg != nil {
-			h.Bg = utils.Ptr(style.BgHex(*h.Bg))
-		}
-	} else {
-		h.Fg = nil
-		h.Bg = nil
-	}
-	return nil
 }

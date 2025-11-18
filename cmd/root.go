@@ -4,9 +4,11 @@ Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"bufio"
 	"os"
 
 	"github.com/madmaxieee/loglit/internal/config"
+	"github.com/madmaxieee/loglit/internal/renderer"
 	"github.com/madmaxieee/loglit/internal/theme"
 	"github.com/spf13/cobra"
 )
@@ -24,15 +26,23 @@ to quickly create a Cobra application.`,
 		cfg := config.GetDefaultConfig()
 		th := theme.GetDefaultTheme()
 
-		for _, hl := range cfg.Highlight {
-			th.Insert(hl)
+		renderer, err := renderer.New(cfg, th)
+		if err != nil {
+			// TODO: handle errors properly
+			panic(err)
 		}
 
-		err := th.ResolveLinks()
-		if err != nil {
-			println("Error resolving theme links:", err.Error())
-			return
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			line := scanner.Text()
+			coloredLine, err := renderer.Render(line)
+			if err != nil {
+				panic(err)
+			}
+			println(coloredLine)
 		}
+
+		// TODO: if stdout is piped, write stdin to stdout
 	},
 }
 

@@ -3,12 +3,11 @@ package theme
 import (
 	"fmt"
 
-	"github.com/madmaxieee/loglit/internal/proto"
 	"github.com/madmaxieee/loglit/internal/style"
 	"github.com/madmaxieee/loglit/internal/utils"
 )
 
-type highlight = proto.Highlight
+type highlight = style.Highlight
 
 type Theme struct {
 	Name         string
