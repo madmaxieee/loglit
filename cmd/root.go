@@ -24,6 +24,7 @@ examples and usage of using your application. For example:
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg := config.GetDefaultConfig()
 		th := theme.GetDefaultTheme()
@@ -36,7 +37,18 @@ to quickly create a Cobra application.`,
 
 		shouldWriteStdout := !term.IsTerminal(int(os.Stdout.Fd()))
 
-		scanner := bufio.NewScanner(os.Stdin)
+		var scanner *bufio.Scanner
+		if len(args) == 0 {
+			scanner = bufio.NewScanner(os.Stdin)
+		} else {
+			file, err := os.Open(args[0])
+			if err != nil {
+				panic(err)
+			}
+			defer file.Close()
+			scanner = bufio.NewScanner(file)
+		}
+
 		for scanner.Scan() {
 			line := scanner.Text()
 			coloredLine, err := renderer.Render(line)
