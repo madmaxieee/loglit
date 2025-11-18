@@ -2,6 +2,7 @@ package theme
 
 import (
 	"fmt"
+	"maps"
 
 	"github.com/madmaxieee/loglit/internal/style"
 	"github.com/madmaxieee/loglit/internal/utils"
@@ -11,7 +12,7 @@ type highlight = style.Highlight
 
 type Theme struct {
 	Name         string
-	HighlightMap map[string]highlight
+	HighlightMap map[string]*highlight
 	linked       bool
 }
 
@@ -22,7 +23,7 @@ func fg(raw string) *string {
 var DefaultTheme = Theme{
 	Name:   "default",
 	linked: false,
-	HighlightMap: map[string]highlight{
+	HighlightMap: map[string]*highlight{
 		"Constant": {
 			Group: "Constant",
 			Fg:    fg("#FF966C"),
@@ -113,10 +114,6 @@ func GetDefaultTheme() Theme {
 
 // TODO: handle cycle linking
 func (t *Theme) ResolveOneLink(name string) error {
-	if t.linked {
-		return nil
-	}
-
 	hl, ok := t.HighlightMap[name]
 	if !ok {
 		return fmt.Errorf("highlight %q not found", name)
@@ -141,29 +138,29 @@ func (t *Theme) ResolveOneLink(name string) error {
 	hl.Fg = targetHl.Fg
 	hl.Bg = targetHl.Bg
 	hl.Link = nil
-	t.HighlightMap[name] = hl
 
 	return nil
 }
 
-func (t *Theme) ResolveLinks() error {
+func (t *Theme) ResolveAllLinks() error {
 	if t.linked {
 		return nil
 	}
-	for name, hl := range t.HighlightMap {
-		if hl.Link != nil {
-			err := t.ResolveOneLink(name)
-			if err != nil {
-				return err
-			}
+
+	groupNames := maps.Keys(t.HighlightMap)
+	for name := range groupNames {
+		err := t.ResolveOneLink(name)
+		if err != nil {
+			return err
 		}
 	}
+
 	t.linked = true
 	return nil
 }
 
 func (t *Theme) Insert(hl highlight) {
-	t.HighlightMap[hl.Group] = hl
+	t.HighlightMap[hl.Group] = &hl
 	if hl.Link != nil {
 		t.linked = false
 	}
@@ -171,5 +168,5 @@ func (t *Theme) Insert(hl highlight) {
 
 func (t *Theme) GetHighlight(group string) (highlight, bool) {
 	hl, ok := t.HighlightMap[group]
-	return hl, ok
+	return *hl, ok
 }

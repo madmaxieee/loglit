@@ -21,16 +21,12 @@ func New(cfg config.Config, th theme.Theme) (*Renderer, error) {
 		Config: cfg,
 		Theme:  th,
 	}
-	err := th.ResolveLinks()
-	if err != nil {
-		return nil, err
-	}
 	for _, hl := range cfg.Highlight {
 		th.Insert(hl)
-		err := th.ResolveOneLink(hl.Group)
-		if err != nil {
-			return nil, err
-		}
+	}
+	err := th.ResolveAllLinks()
+	if err != nil {
+		return nil, err
 	}
 	return renderer, nil
 }
