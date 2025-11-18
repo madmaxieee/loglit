@@ -5,12 +5,14 @@ package cmd
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 
 	"github.com/madmaxieee/loglit/internal/config"
 	"github.com/madmaxieee/loglit/internal/renderer"
 	"github.com/madmaxieee/loglit/internal/theme"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var rootCmd = &cobra.Command{
@@ -32,6 +34,8 @@ to quickly create a Cobra application.`,
 			panic(err)
 		}
 
+		shouldWriteStdout := !term.IsTerminal(int(os.Stdout.Fd()))
+
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -39,10 +43,13 @@ to quickly create a Cobra application.`,
 			if err != nil {
 				panic(err)
 			}
-			println(coloredLine)
+			// writes coloredLine to stderr
+			fmt.Fprintln(os.Stderr, coloredLine)
+			if shouldWriteStdout {
+				// write original line to stdout
+				fmt.Fprintln(os.Stdout, line)
+			}
 		}
-
-		// TODO: if stdout is piped, write stdin to stdout
 	},
 }
 
