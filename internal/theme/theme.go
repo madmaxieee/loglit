@@ -23,6 +23,7 @@ func fg(raw string) *string {
 var DefaultTheme = Theme{
 	Name:   "default",
 	linked: false,
+	// TODO: ditch the vim highlight group naming and just use color names
 	HighlightMap: map[string]*highlight{
 		"Constant": {
 			Group: "Constant",
