@@ -11,8 +11,6 @@ import (
 	"github.com/madmaxieee/loglit/internal/theme"
 )
 
-type highlight = style.Highlight
-
 type Renderer struct {
 	Config config.Config
 	Theme  theme.Theme
@@ -23,12 +21,16 @@ func New(cfg config.Config, th theme.Theme) (*Renderer, error) {
 		Config: cfg,
 		Theme:  th,
 	}
-	for _, hl := range cfg.Highlight {
-		th.Insert(hl)
-	}
 	err := th.ResolveLinks()
 	if err != nil {
 		return nil, err
+	}
+	for _, hl := range cfg.Highlight {
+		th.Insert(hl)
+		err := th.ResolveOneLink(hl.Group)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return renderer, nil
 }

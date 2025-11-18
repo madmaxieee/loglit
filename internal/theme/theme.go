@@ -112,7 +112,7 @@ func GetDefaultTheme() Theme {
 }
 
 // TODO: handle cycle linking
-func (t *Theme) Resolve(name string) error {
+func (t *Theme) ResolveOneLink(name string) error {
 	if t.linked {
 		return nil
 	}
@@ -133,7 +133,7 @@ func (t *Theme) Resolve(name string) error {
 	}
 
 	if targetHl.Link != nil {
-		if err := t.Resolve(targetName); err != nil {
+		if err := t.ResolveOneLink(targetName); err != nil {
 			return err
 		}
 	}
@@ -152,7 +152,7 @@ func (t *Theme) ResolveLinks() error {
 	}
 	for name, hl := range t.HighlightMap {
 		if hl.Link != nil {
-			err := t.Resolve(name)
+			err := t.ResolveOneLink(name)
 			if err != nil {
 				return err
 			}

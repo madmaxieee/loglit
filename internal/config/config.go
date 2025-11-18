@@ -202,13 +202,11 @@ var DefaultConfig = Config{
 			Pattern: proto.MustCompile(`\b([0-9a-fA-F]{40}|[0-9a-fA-F]{56}|[0-9a-fA-F]{64}|[0-9a-fA-F]{96}|[0-9a-fA-F]{128})\b`),
 		},
 
-		// TODO: debug this regex
-
-		// // POSIX-style path    e.g. '/var/log/system.log', './run.sh', '../a/b', '~/c'.
-		// {
-		// 	Group:   "LogPath",
-		// 	Pattern: proto.MustCompile(`()`),
-		// },
+		// POSIX-style path    e.g. '/var/log/system.log', './run.sh', '../a/b', '~/c'.
+		{
+			Group:   "LogPath",
+			Pattern: proto.MustCompile(`\b(?:\.{1,2}|~|[^\s/'":]+)?(?:/[^\s/'":]+)+/?\b`),
+		},
 
 		// log levels
 		{
@@ -363,7 +361,7 @@ var DefaultConfig = Config{
 		{Group: "LogUUID", Link: strPtr("Label")},
 		{Group: "LogMD5", Link: strPtr("Label")},
 		{Group: "LogSHA", Link: strPtr("Label")},
-		{Group: "LogPath", Link: strPtr("Structure")},
+		{Group: "LogPath", Link: strPtr("String")},
 		{Group: "LogLvFatal", Link: strPtr("ErrorMsg")},
 		{Group: "LogLvEmergency", Link: strPtr("ErrorMsg")},
 		{Group: "LogLvAlert", Link: strPtr("ErrorMsg")},
