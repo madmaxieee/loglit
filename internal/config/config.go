@@ -205,7 +205,7 @@ var DefaultConfig = Config{
 		// POSIX-style path    e.g. '/var/log/system.log', './run.sh', '../a/b', '~/c'.
 		{
 			Group:   "LogPath",
-			Pattern: proto.MustCompile(`\b(?:\.{1,2}|~|[^\s/'":]+)?(?:/[^\s/'":]+)+/?\b`),
+			Pattern: proto.MustCompile(`(?:\.{1,2}|~|[^\s/'"]+)?(?:/[^\s/'"]+)+/?`),
 		},
 
 		// log levels
