@@ -12,8 +12,9 @@ type syntax = proto.Syntax
 type highlight = style.Highlight
 
 type Config struct {
-	Syntax    []syntax
-	Highlight []highlight
+	BuiltInSyntax []syntax
+	UserSyntax    []syntax
+	Highlight     []highlight
 }
 
 func cap(c byte) byte {
@@ -54,7 +55,7 @@ func lowerCapSCREAM(word string) []string {
 }
 
 var DefaultConfig = Config{
-	Syntax: []syntax{
+	BuiltInSyntax: []syntax{
 		// symbols
 		{
 			Group:   "LogSymbol",

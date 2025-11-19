@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/madmaxieee/loglit/internal/config"
+	"github.com/madmaxieee/loglit/internal/proto"
 	"github.com/madmaxieee/loglit/internal/style"
 	"github.com/madmaxieee/loglit/internal/theme"
 )
@@ -35,52 +36,63 @@ type Match struct {
 	Start     int
 	End       int
 	AnsiStart string
-	Priority  int
 }
 
-func (r Renderer) Render(text string) (string, error) {
+func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlight, text string) ([]Match, error) {
 	var matches []Match
 
 	// find matches for regex
-	for i, syn := range r.Config.Syntax {
+	for _, syn := range syntaxList {
 		p := syn.Pattern
 		if !p.HasValue() {
 			continue
 		}
 		for _, idx := range p.FindAllStringIndex(text, -1) {
-			hl, ok := r.Theme.HighlightMap[syn.Group]
+			hl, ok := highlights[syn.Group]
 			if !ok {
-				return "", fmt.Errorf("highlight group %s not found", syn.Group)
+				return []Match{}, fmt.Errorf("highlight group %s not found", syn.Group)
 			}
 			matches = append(matches, Match{
 				Start:     idx[0],
 				End:       idx[1],
 				AnsiStart: hl.BuildAnsi(),
-				Priority:  i,
 			})
 		}
 	}
 
-	const KeywordPriorityOffset = 1_000_000
-
 	// find matches for keywords
-	for i, syn := range r.Config.Syntax {
+	for _, syn := range syntaxList {
 		for _, kw := range syn.Keywords {
 			re := regexp.MustCompile(`\b` + regexp.QuoteMeta(kw) + `\b`)
 			for _, idx := range re.FindAllStringIndex(text, -1) {
-				hl, ok := r.Theme.HighlightMap[syn.Group]
+				hl, ok := highlights[syn.Group]
 				if !ok {
-					return "", fmt.Errorf("highlight group %s not found", syn.Group)
+					return []Match{}, fmt.Errorf("highlight group %s not found", syn.Group)
 				}
 				matches = append(matches, Match{
 					Start:     idx[0],
 					End:       idx[1],
 					AnsiStart: hl.BuildAnsi(),
-					Priority:  i + KeywordPriorityOffset,
 				})
 			}
 		}
 	}
+
+	return matches, nil
+}
+
+func (r Renderer) Render(text string) (string, error) {
+	matches, err := findMatches(r.Config.BuiltInSyntax, r.Theme.HighlightMap, text)
+	if err != nil {
+		return text, err
+	}
+
+	// TODO: allow user matches to overlay on top of built-in matches
+	userMatches, err := findMatches(r.Config.UserSyntax, r.Theme.HighlightMap, text)
+	if err != nil {
+		return text, err
+	}
+	matches = append(matches, userMatches...)
 
 	if len(matches) == 0 {
 		return text, nil
@@ -88,6 +100,7 @@ func (r Renderer) Render(text string) (string, error) {
 
 	// resolve collisions
 	var validMatches []Match
+	// NOTE: later matches have higher priority
 	for i := len(matches) - 1; i >= 0; i-- {
 		match := matches[i]
 		collision := false

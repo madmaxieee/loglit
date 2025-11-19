@@ -20,6 +20,10 @@ func fg(raw string) *string {
 	return utils.Ptr(style.FgHex(raw))
 }
 
+func bg(raw string) *string {
+	return utils.Ptr(style.BgHex(raw))
+}
+
 var DefaultTheme = Theme{
 	Name:   "default",
 	linked: false,
@@ -105,6 +109,13 @@ var DefaultTheme = Theme{
 		"LogBlue": {
 			Group: "LogBlue",
 			Fg:    fg("#65BCFF"),
+		},
+		// extra highlight group
+		"UserPattern": {
+			Group: "UserPattern",
+			Fg:    fg("#222436"),
+			Bg:    bg("#C099FF"),
+			Bold:  true,
 		},
 	},
 }

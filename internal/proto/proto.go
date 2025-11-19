@@ -8,6 +8,7 @@ type Syntax struct {
 	Group    string
 	Pattern  Pattern
 	Keywords []string
+	IsUser   bool
 }
 
 type Pattern struct {

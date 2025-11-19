@@ -7,13 +7,22 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"regexp"
 
 	"github.com/madmaxieee/loglit/internal/config"
+	"github.com/madmaxieee/loglit/internal/proto"
 	"github.com/madmaxieee/loglit/internal/renderer"
 	"github.com/madmaxieee/loglit/internal/theme"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
+
+var flags struct {
+	// Define flags here
+	InputFile string
+}
+
+var patternsFromArgs []regexp.Regexp
 
 var rootCmd = &cobra.Command{
 	Use:   "loglit",
@@ -24,11 +33,28 @@ examples and usage of using your application. For example:
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-	// TODO: use args to take user specified highlight patterns, use a flag to decide whether or not to open a file
-	Args: cobra.MaximumNArgs(1),
+
+	Args: func(cmd *cobra.Command, args []string) error {
+		for _, arg := range args {
+			pattern, err := regexp.Compile(arg)
+			if err != nil {
+				return fmt.Errorf("invalid regex pattern '%s': %v", arg, err)
+			}
+			patternsFromArgs = append(patternsFromArgs, *pattern)
+		}
+		return nil
+	},
+
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg := config.GetDefaultConfig()
 		th := theme.GetDefaultTheme()
+
+		for _, pattern := range patternsFromArgs {
+			cfg.UserSyntax = append(cfg.UserSyntax, proto.Syntax{
+				Group:   "UserPattern",
+				Pattern: proto.Pattern{Regexp: &pattern},
+			})
+		}
 
 		renderer, err := renderer.New(cfg, th)
 		if err != nil {
@@ -39,10 +65,10 @@ to quickly create a Cobra application.`,
 		shouldWriteStdout := !term.IsTerminal(int(os.Stdout.Fd()))
 
 		var scanner *bufio.Scanner
-		if len(args) == 0 {
+		if flags.InputFile == "" {
 			scanner = bufio.NewScanner(os.Stdin)
 		} else {
-			file, err := os.Open(args[0])
+			file, err := os.Open(flags.InputFile)
 			if err != nil {
 				panic(err)
 			}
@@ -74,4 +100,5 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.Flags().StringVarP(&flags.InputFile, "input", "i", "", "Input file to read logs from, if not provided, reads from stdin")
 }
