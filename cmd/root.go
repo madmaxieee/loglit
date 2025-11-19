@@ -26,13 +26,10 @@ var patternsFromArgs []regexp.Regexp
 
 var rootCmd = &cobra.Command{
 	Use:   "loglit",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Loglit is a CLI tool for syntax highlighting and filtering logs",
+	Long: `Loglit reads logs from stdin or a file and applies syntax highlighting
+based on built-in patterns and user-provided regex patterns. It is designed
+to make log analysis easier in the terminal.`,
 
 	Args: func(cmd *cobra.Command, args []string) error {
 		for _, arg := range args {
