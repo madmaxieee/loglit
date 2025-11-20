@@ -3,7 +3,6 @@ package renderer
 import (
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/madmaxieee/loglit/internal/config"
@@ -53,8 +52,8 @@ func precompileKeywordRegex(syntaxList []proto.Syntax) {
 	}
 }
 
-func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlight, text string) ([]Match, error) {
-	var matches []Match
+func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlight, text string) (MatchLayer, error) {
+	var matches MatchLayer
 
 	// find matches for regex
 	for _, syn := range syntaxList {
@@ -65,7 +64,7 @@ func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlig
 		for _, idx := range p.FindAllStringIndex(text, -1) {
 			hl, ok := highlights[syn.Group]
 			if !ok {
-				return []Match{}, fmt.Errorf("highlight group %s not found", syn.Group)
+				return MatchLayer{}, fmt.Errorf("highlight group %s not found", syn.Group)
 			}
 			matches = append(matches, Match{
 				Start:     idx[0],
@@ -80,12 +79,12 @@ func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlig
 		for _, kw := range syn.Keywords {
 			re, ok := keywordRegexCache[kw]
 			if !ok {
-				return []Match{}, fmt.Errorf("keyword regex for '%s' not found", kw)
+				return MatchLayer{}, fmt.Errorf("keyword regex for '%s' not found", kw)
 			}
 			for _, idx := range re.FindAllStringIndex(text, -1) {
 				hl, ok := highlights[syn.Group]
 				if !ok {
-					return []Match{}, fmt.Errorf("highlight group %s not found", syn.Group)
+					return MatchLayer{}, fmt.Errorf("highlight group %s not found", syn.Group)
 				}
 				matches = append(matches, Match{
 					Start:     idx[0],
@@ -100,58 +99,40 @@ func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlig
 }
 
 func (r Renderer) Render(text string) (string, error) {
-	matches, err := findMatches(r.Config.BuiltInSyntax, r.Theme.HighlightMap, text)
+	builtInMatches, err := findMatches(r.Config.BuiltInSyntax, r.Theme.HighlightMap, text)
 	if err != nil {
 		return text, err
 	}
+	builtInMatches.removeOverlaps().Sort()
 
-	// TODO: allow user matches to overlay on top of built-in matches
 	userMatches, err := findMatches(r.Config.UserSyntax, r.Theme.HighlightMap, text)
 	if err != nil {
 		return text, err
 	}
-	matches = append(matches, userMatches...)
+	userMatches.removeOverlaps().Sort()
+
+	matches := Stack(userMatches, builtInMatches)
 
 	if len(matches) == 0 {
 		return text, nil
 	}
 
-	// resolve collisions
-	var validMatches []Match
-	// NOTE: later matches have higher priority
-	for i := len(matches) - 1; i >= 0; i-- {
-		match := matches[i]
-		collision := false
-		for _, existingMatch := range validMatches {
-			if !(match.End <= existingMatch.Start || match.Start >= existingMatch.End) {
-				collision = true
-				break
-			}
-		}
-		if !collision {
-			validMatches = append(validMatches, match)
-		}
-	}
-
-	// sort by start position
-	sort.Slice(validMatches, func(i, j int) bool {
-		return validMatches[i].Start < validMatches[j].Start
-	})
+	matches.Sort()
 
 	// build final string
 	var b strings.Builder
 	b.Grow(len(text) * 2)
 
-	b.WriteString(text[:validMatches[0].Start])
-	for i := range len(validMatches) {
-		match := validMatches[i]
+	b.WriteString(text[:matches[0].Start])
+	for i := range len(matches) {
+		match := matches[i]
 		b.WriteString(match.AnsiStart)
 		b.WriteString(text[match.Start:match.End])
 		b.WriteString(style.Reset)
-		if i == len(validMatches)-1 {
+		if i == len(matches)-1 {
 			b.WriteString(text[match.End:])
 		} else {
-			nextMatch := validMatches[i+1]
+			nextMatch := matches[i+1]
 			b.WriteString(text[match.End:nextMatch.Start])
 		}
 	}
