@@ -17,11 +17,15 @@ type Renderer struct {
 	Theme  theme.Theme
 }
 
+var keywordRegexCache map[string]*regexp.Regexp = make(map[string]*regexp.Regexp)
+
 func New(cfg config.Config, th theme.Theme) (*Renderer, error) {
 	renderer := &Renderer{
 		Config: cfg,
 		Theme:  th,
 	}
+	precompileKeywordRegex(cfg.BuiltInSyntax)
+	precompileKeywordRegex(cfg.UserSyntax)
 	for _, hl := range cfg.Highlight {
 		th.Insert(hl)
 	}
@@ -36,6 +40,17 @@ type Match struct {
 	Start     int
 	End       int
 	AnsiStart string
+}
+
+func precompileKeywordRegex(syntaxList []proto.Syntax) {
+	for _, syn := range syntaxList {
+		for _, kw := range syn.Keywords {
+			if _, exists := keywordRegexCache[kw]; !exists {
+				re := regexp.MustCompile(`\b` + regexp.QuoteMeta(kw) + `\b`)
+				keywordRegexCache[kw] = re
+			}
+		}
+	}
 }
 
 func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlight, text string) ([]Match, error) {
@@ -63,7 +78,10 @@ func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlig
 	// find matches for keywords
 	for _, syn := range syntaxList {
 		for _, kw := range syn.Keywords {
-			re := regexp.MustCompile(`\b` + regexp.QuoteMeta(kw) + `\b`)
+			re, ok := keywordRegexCache[kw]
+			if !ok {
+				return []Match{}, fmt.Errorf("keyword regex for '%s' not found", kw)
+			}
 			for _, idx := range re.FindAllStringIndex(text, -1) {
 				hl, ok := highlights[syn.Group]
 				if !ok {
