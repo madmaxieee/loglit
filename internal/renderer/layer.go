@@ -4,6 +4,10 @@ import "sort"
 
 type MatchLayer []Match
 
+func (matches MatchLayer) Len() int {
+	return len(matches)
+}
+
 func (matches *MatchLayer) Sort() *MatchLayer {
 	sort.SliceStable(*matches, func(i, j int) bool {
 		a, b := (*matches)[i], (*matches)[j]

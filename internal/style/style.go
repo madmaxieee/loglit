@@ -16,6 +16,7 @@ type Highlight struct {
 	Bold      bool
 	Underline bool
 	ansi      *string
+	ansiReset *string
 }
 
 func (h *Highlight) UnmarshalText(text []byte) error {
@@ -61,6 +62,26 @@ func (h Highlight) BuildAnsi() string {
 	return *h.ansi
 }
 
-func (h Highlight) HasExtraStyle() bool {
-	return h.Bold || h.Italic || h.Underline
+func (h Highlight) BuildAnsiReset() string {
+	if h.ansiReset != nil {
+		return *h.ansiReset
+	}
+	var b strings.Builder
+	if h.Fg != nil {
+		b.WriteString(ResetFgAnsi)
+	}
+	if h.Bg != nil {
+		b.WriteString(ResetBgAnsi)
+	}
+	if h.Bold {
+		b.WriteString(ResetBoldAnsi)
+	}
+	if h.Italic {
+		b.WriteString(ResetItalicAnsi)
+	}
+	if h.Underline {
+		b.WriteString(ResetUnderlineAnsi)
+	}
+	h.ansiReset = utils.Ptr(b.String())
+	return *h.ansiReset
 }

@@ -39,6 +39,7 @@ type Match struct {
 	Start     int
 	End       int
 	AnsiStart string
+	AnsiEnd   string
 }
 
 func precompileKeywordRegex(syntaxList []proto.Syntax) {
@@ -70,6 +71,7 @@ func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlig
 				Start:     idx[0],
 				End:       idx[1],
 				AnsiStart: hl.BuildAnsi(),
+				AnsiEnd:   hl.BuildAnsiReset(),
 			})
 		}
 	}
@@ -90,6 +92,7 @@ func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlig
 					Start:     idx[0],
 					End:       idx[1],
 					AnsiStart: hl.BuildAnsi(),
+					AnsiEnd:   hl.BuildAnsiReset(),
 				})
 			}
 		}
@@ -111,7 +114,22 @@ func (r Renderer) Render(text string) (string, error) {
 	}
 	userMatches.removeOverlaps().Sort()
 
-	matches := Stack(userMatches, builtInMatches)
+	var matches MatchLayer
+	if userMatches.Len() > 0 {
+		matches = Stack(userMatches, builtInMatches)
+		userBgHighlight, ok := r.Theme.HighlightMap["UserMatchLineBackground"]
+		if !ok {
+			return text, fmt.Errorf("highlight group %q not found", "UserMatchLineBackground")
+		}
+		matches = Stack(matches, MatchLayer{{
+			Start:     0,
+			End:       len(text),
+			AnsiStart: userBgHighlight.BuildAnsi(),
+			AnsiEnd:   userBgHighlight.BuildAnsiReset(),
+		}})
+	} else {
+		matches = builtInMatches
+	}
 
 	if len(matches) == 0 {
 		return text, nil
@@ -128,7 +146,7 @@ func (r Renderer) Render(text string) (string, error) {
 		match := matches[i]
 		b.WriteString(match.AnsiStart)
 		b.WriteString(text[match.Start:match.End])
-		b.WriteString(style.Reset)
+		b.WriteString(match.AnsiEnd)
 		if i == len(matches)-1 {
 			b.WriteString(text[match.End:])
 		} else {
@@ -136,6 +154,7 @@ func (r Renderer) Render(text string) (string, error) {
 			b.WriteString(text[match.End:nextMatch.Start])
 		}
 	}
+	b.WriteString(style.ResetAllAnsi)
 
 	return b.String(), nil
 }

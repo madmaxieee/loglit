@@ -117,6 +117,10 @@ var DefaultTheme = Theme{
 			Bg:    bg("#C099FF"),
 			Bold:  true,
 		},
+		"UserMatchLineBackground": {
+			Group: "UserMatchLineBackground",
+			Bg:    bg("#403355"),
+		},
 	},
 }
 

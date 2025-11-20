@@ -4,7 +4,11 @@ import "fmt"
 
 const ESCAPE = "\033["
 
-const Reset = ESCAPE + "0m"
+const ResetAllAnsi = ESCAPE + "0m"
+
+const ResetFgAnsi = ESCAPE + "39m"
+
+const ResetBgAnsi = ESCAPE + "49m"
 
 func Fg(r int, g int, b int) string {
 	return fmt.Sprintf("%s38;2;%d;%d;%dm", ESCAPE, r, g, b)
