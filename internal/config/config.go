@@ -362,7 +362,7 @@ var DefaultConfig = Config{
 		{Group: "LogUUID", Link: strPtr("Label")},
 		{Group: "LogMD5", Link: strPtr("Label")},
 		{Group: "LogSHA", Link: strPtr("Label")},
-		{Group: "LogPath", Link: strPtr("String")},
+		{Group: "LogPath", Link: strPtr("Type")},
 		{Group: "LogLvFatal", Link: strPtr("ErrorMsg")},
 		{Group: "LogLvEmergency", Link: strPtr("ErrorMsg")},
 		{Group: "LogLvAlert", Link: strPtr("ErrorMsg")},
