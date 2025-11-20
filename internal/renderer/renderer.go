@@ -102,11 +102,19 @@ func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlig
 }
 
 func (r Renderer) Render(text string) (string, error) {
+	builtInLowerMatches, err := findMatches(r.Config.BuiltInSyntaxLower, r.Theme.HighlightMap, text)
+	if err != nil {
+		return text, err
+	}
+	builtInLowerMatches.removeOverlaps().Sort()
+
 	builtInMatches, err := findMatches(r.Config.BuiltInSyntax, r.Theme.HighlightMap, text)
 	if err != nil {
 		return text, err
 	}
 	builtInMatches.removeOverlaps().Sort()
+
+	builtinMatchesCombined := Stack(builtInMatches, builtInLowerMatches)
 
 	userMatches, err := findMatches(r.Config.UserSyntax, r.Theme.HighlightMap, text)
 	if err != nil {
@@ -114,9 +122,9 @@ func (r Renderer) Render(text string) (string, error) {
 	}
 	userMatches.removeOverlaps().Sort()
 
-	var matches MatchLayer
+	matches := Stack(userMatches, builtinMatchesCombined)
+
 	if userMatches.Len() > 0 {
-		matches = Stack(userMatches, builtInMatches)
 		userBgHighlight, ok := r.Theme.HighlightMap["UserMatchLineBackground"]
 		if !ok {
 			return text, fmt.Errorf("highlight group %q not found", "UserMatchLineBackground")
@@ -127,8 +135,6 @@ func (r Renderer) Render(text string) (string, error) {
 			AnsiStart: userBgHighlight.BuildAnsi(),
 			AnsiEnd:   userBgHighlight.BuildAnsiReset(),
 		}})
-	} else {
-		matches = builtInMatches
 	}
 
 	if len(matches) == 0 {

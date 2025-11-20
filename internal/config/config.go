@@ -12,9 +12,10 @@ type syntax = proto.Syntax
 type highlight = style.Highlight
 
 type Config struct {
-	BuiltInSyntax []syntax
-	UserSyntax    []syntax
-	Highlight     []highlight
+	BuiltInSyntaxLower []syntax
+	BuiltInSyntax      []syntax
+	UserSyntax         []syntax
+	Highlight          []highlight
 }
 
 func cap(c byte) byte {
@@ -55,27 +56,30 @@ func lowerCapSCREAM(word string) []string {
 }
 
 var DefaultConfig = Config{
-	BuiltInSyntax: []syntax{
+	BuiltInSyntaxLower: []syntax{
 		// symbols
 		{
 			Group:   "LogSymbol",
 			Pattern: proto.MustCompile(`[!@#$%^&*;:?]`),
 		},
 
+		// string
+		{
+			Group:   "LogString",
+			Pattern: proto.MustCompile(`"([^"\\]|\\.)*"`),
+		},
+		{
+			Group:   "LogString",
+			Pattern: proto.MustCompile(`'([^'\\]|\\.)*'`),
+		},
+	},
+
+	BuiltInSyntax: []syntax{
 		// separators
 		{
 			Group:   "LogSeparatorLine",
 			Pattern: proto.MustCompile(`(-{3,}|={3,}|#{3,}|\*{3,}|<{3,}|>{3,})`),
 		},
-
-		// TODO: regex for string
-
-		// " Strings
-		// " ------------------------------
-		// syn region LogString      start=/"/  end=/"/  end=/$/  skip=/\\./
-		// syn region LogString      start=/`/  end=/`/  end=/$/  skip=/\\./
-		// " Quoted strings, but no match on quotes like `don't`, possessive `s'` and `'s`
-		// syn region LogString      start=/\(s\)\@<!'\(s \|t \)\@!/  end=/'/  end=/$/  skip=/\\./
 
 		// numbers
 		{
