@@ -128,14 +128,23 @@ func GetDefaultTheme() Theme {
 	return DefaultTheme
 }
 
-// TODO: handle cycle linking
 func (t *Theme) ResolveOneLink(name string) error {
+	return t.resolveOneLink(name, make(map[string]bool))
+}
+
+func (t *Theme) resolveOneLink(name string, visited map[string]bool) error {
+	if visited[name] {
+		return fmt.Errorf("highlight link cycle detected for %q", name)
+	}
+	visited[name] = true
+
 	hl, ok := t.HighlightMap[name]
 	if !ok {
 		return fmt.Errorf("highlight %q not found", name)
 	}
 
 	if hl.Link == nil {
+		delete(visited, name)
 		return nil
 	}
 
@@ -146,7 +155,7 @@ func (t *Theme) ResolveOneLink(name string) error {
 	}
 
 	if targetHl.Link != nil {
-		if err := t.ResolveOneLink(targetName); err != nil {
+		if err := t.resolveOneLink(targetName, visited); err != nil {
 			return err
 		}
 	}
@@ -155,6 +164,7 @@ func (t *Theme) ResolveOneLink(name string) error {
 	hl.Bg = targetHl.Bg
 	hl.Link = nil
 
+	delete(visited, name)
 	return nil
 }
 
