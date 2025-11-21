@@ -66,15 +66,21 @@ var DefaultConfig = Config{
 		// string
 		{
 			Group:   "LogString",
-			Pattern: proto.MustCompile(`"([^"\\]|\\.)*"`),
+			Pattern: proto.MustCompile(`'([^'\\]|\\.)*'`),
 		},
 		{
 			Group:   "LogString",
-			Pattern: proto.MustCompile(`'([^'\\]|\\.)*'`),
+			Pattern: proto.MustCompile(`"([^"\\]|\\.)*"`),
 		},
 	},
 
 	BuiltInSyntax: []syntax{
+		// raw \n, \t, \r
+		{
+			Group:   "LogSymbol",
+			Pattern: proto.MustCompile(`\\[ntr]`),
+		},
+
 		// separators
 		{
 			Group:   "LogSeparatorLine",
@@ -207,11 +213,11 @@ var DefaultConfig = Config{
 			Pattern: proto.MustCompile(`\b([0-9a-fA-F]{40}|[0-9a-fA-F]{56}|[0-9a-fA-F]{64}|[0-9a-fA-F]{96}|[0-9a-fA-F]{128})\b`),
 		},
 
-		// POSIX-style path    e.g. '/var/log/system.log', './run.sh', '../a/b', '~/c'.
-		{
-			Group:   "LogPath",
-			Pattern: proto.MustCompile(`(?:\.{1,2}|~|[^\s/'"]+)?(?:/[^\s/'"]+)+/?`),
-		},
+		// // POSIX-style path    e.g. '/var/log/system.log', './run.sh', '../a/b', '~/c'.
+		// {
+		// 	Group:   "LogPath",
+		// 	Pattern: proto.MustCompile(`(?:\.{1,2}|~|[^\s/'"]+)?(?:/[^\s/'"]+)+/?`),
+		// },
 
 		// log levels
 		{
@@ -366,7 +372,7 @@ var DefaultConfig = Config{
 		{Group: "LogUUID", Link: strPtr("Label")},
 		{Group: "LogMD5", Link: strPtr("Label")},
 		{Group: "LogSHA", Link: strPtr("Label")},
-		{Group: "LogPath", Link: strPtr("Type")},
+		{Group: "LogPath", Link: strPtr("Function")},
 		{Group: "LogLvFatal", Link: strPtr("ErrorMsg")},
 		{Group: "LogLvEmergency", Link: strPtr("ErrorMsg")},
 		{Group: "LogLvAlert", Link: strPtr("ErrorMsg")},

@@ -3,7 +3,6 @@ package renderer
 import (
 	"fmt"
 	"regexp"
-	"sync"
 
 	"github.com/madmaxieee/loglit/internal/proto"
 	"github.com/madmaxieee/loglit/internal/style"
@@ -38,50 +37,28 @@ func findWordsInText(text string) map[string][]Word {
 func findKeywordMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlight, text string) (MatchLayer, error) {
 	words := findWordsInText(text)
 
-	type result struct {
-		matches []Match
-		err     error
-	}
-	results := make([]result, len(syntaxList))
-
-	var wg sync.WaitGroup
-	wg.Add(len(syntaxList))
+	var matches MatchLayer
 
 	// find matches for keywords
-	for i, syn := range syntaxList {
+	for _, syn := range syntaxList {
 		hl, ok := highlights[syn.Group]
 		if !ok {
-			results[i] = result{nil, fmt.Errorf("highlight group %s not found", syn.Group)}
-			wg.Done()
-			continue
+			return nil, fmt.Errorf("highlight group %s not found", syn.Group)
 		}
-		go func() {
-			defer wg.Done()
-			for _, kw := range syn.Keywords {
-				wordInstances, ok := words[kw]
-				if !ok {
-					continue
-				}
-				for _, word := range wordInstances {
-					results[i].matches = append(results[i].matches, Match{
-						Start:     word.Start,
-						End:       word.End,
-						AnsiStart: hl.BuildAnsi(),
-						AnsiEnd:   hl.BuildAnsiReset(),
-					})
-				}
+		for _, kw := range syn.Keywords {
+			wordInstances, ok := words[kw]
+			if !ok {
+				continue
 			}
-		}()
-	}
-
-	wg.Wait()
-
-	var matches MatchLayer
-	for _, res := range results {
-		if res.err != nil {
-			return nil, res.err
+			for _, word := range wordInstances {
+				matches = append(matches, Match{
+					Start:     word.Start,
+					End:       word.End,
+					AnsiStart: hl.BuildAnsi(),
+					AnsiEnd:   hl.BuildAnsiReset(),
+				})
+			}
 		}
-		matches = append(matches, res.matches...)
 	}
 
 	return matches, nil
