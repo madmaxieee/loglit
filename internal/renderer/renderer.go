@@ -2,7 +2,6 @@ package renderer
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/madmaxieee/loglit/internal/config"
@@ -16,15 +15,11 @@ type Renderer struct {
 	Theme  theme.Theme
 }
 
-var keywordRegexCache map[string]*regexp.Regexp = make(map[string]*regexp.Regexp)
-
 func New(cfg config.Config, th theme.Theme) (*Renderer, error) {
 	renderer := &Renderer{
 		Config: cfg,
 		Theme:  th,
 	}
-	precompileKeywordRegex(cfg.BuiltInSyntax)
-	precompileKeywordRegex(cfg.UserSyntax)
 	for _, hl := range cfg.Highlight {
 		th.Insert(hl)
 	}
@@ -40,17 +35,6 @@ type Match struct {
 	End       int
 	AnsiStart string
 	AnsiEnd   string
-}
-
-func precompileKeywordRegex(syntaxList []proto.Syntax) {
-	for _, syn := range syntaxList {
-		for _, kw := range syn.Keywords {
-			if _, exists := keywordRegexCache[kw]; !exists {
-				re := regexp.MustCompile(`\b` + regexp.QuoteMeta(kw) + `\b`)
-				keywordRegexCache[kw] = re
-			}
-		}
-	}
 }
 
 func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlight, text string) (MatchLayer, error) {
@@ -76,27 +60,11 @@ func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlig
 		}
 	}
 
-	// find matches for keywords
-	for _, syn := range syntaxList {
-		for _, kw := range syn.Keywords {
-			re, ok := keywordRegexCache[kw]
-			if !ok {
-				return MatchLayer{}, fmt.Errorf("keyword regex for '%s' not found", kw)
-			}
-			for _, idx := range re.FindAllStringIndex(text, -1) {
-				hl, ok := highlights[syn.Group]
-				if !ok {
-					return MatchLayer{}, fmt.Errorf("highlight group %s not found", syn.Group)
-				}
-				matches = append(matches, Match{
-					Start:     idx[0],
-					End:       idx[1],
-					AnsiStart: hl.BuildAnsi(),
-					AnsiEnd:   hl.BuildAnsiReset(),
-				})
-			}
-		}
+	keywordMatches, err := findKeywordMatches(syntaxList, highlights, text)
+	if err != nil {
+		return MatchLayer{}, err
 	}
+	matches = append(matches, keywordMatches...)
 
 	return matches, nil
 }
