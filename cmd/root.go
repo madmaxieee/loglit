@@ -34,6 +34,9 @@ to make log analysis easier in the terminal.`,
 
 	Args: func(cmd *cobra.Command, args []string) error {
 		for _, arg := range args {
+			if arg == "" {
+				continue
+			}
 			pattern, err := regexp.Compile(arg)
 			if err != nil {
 				return fmt.Errorf("invalid regex pattern '%s': %v", arg, err)

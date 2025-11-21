@@ -83,6 +83,9 @@ func Stack(top MatchLayer, bottom MatchLayer) MatchLayer {
 			// right remainder, will be compared against next top
 			if bot.End > top.End {
 				bottom[iBot].Start = top.End
+			} else {
+				// if theres is no right remainder, drop the bottom
+				iBot++
 			}
 
 			continue
