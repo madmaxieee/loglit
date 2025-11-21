@@ -14,6 +14,8 @@ import (
 	"github.com/madmaxieee/loglit/internal/proto"
 	"github.com/madmaxieee/loglit/internal/renderer"
 	"github.com/madmaxieee/loglit/internal/theme"
+	"github.com/madmaxieee/loglit/internal/utils"
+
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -50,12 +52,12 @@ to make log analysis easier in the terminal.`,
 		if flags.Profile != "" {
 			f, err := os.Create(flags.Profile)
 			if err != nil {
-				panic(err)
+				utils.HandleError(err)
 			}
 			defer f.Close()
 			err = pprof.StartCPUProfile(f)
 			if err != nil {
-				panic(err)
+				utils.HandleError(err)
 			}
 			defer pprof.StopCPUProfile()
 			defer println("CPU profiling data written to", flags.Profile)
@@ -73,8 +75,7 @@ to make log analysis easier in the terminal.`,
 
 		renderer, err := renderer.New(cfg, th)
 		if err != nil {
-			// TODO: handle errors properly
-			panic(err)
+			utils.HandleError(err)
 		}
 
 		shouldWriteStdout := !term.IsTerminal(int(os.Stdout.Fd()))
@@ -85,7 +86,7 @@ to make log analysis easier in the terminal.`,
 		} else {
 			file, err := os.Open(flags.InputFile)
 			if err != nil {
-				panic(err)
+				utils.HandleError(err)
 			}
 			defer file.Close()
 			scanner = bufio.NewScanner(file)
@@ -99,7 +100,7 @@ to make log analysis easier in the terminal.`,
 			line := scanner.Text()
 			coloredLine, err := renderer.Render(line)
 			if err != nil {
-				panic(err)
+				utils.HandleError(err)
 			}
 			// writes coloredLine to stderr
 			stdErrWriter.WriteString(coloredLine)
