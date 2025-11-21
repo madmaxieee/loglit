@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime/pprof"
 
 	"github.com/madmaxieee/loglit/internal/config"
 	"github.com/madmaxieee/loglit/internal/proto"
@@ -18,8 +19,8 @@ import (
 )
 
 var flags struct {
-	// Define flags here
 	InputFile string
+	Profile   string
 }
 
 var patternsFromArgs []regexp.Regexp
@@ -43,6 +44,20 @@ to make log analysis easier in the terminal.`,
 	},
 
 	Run: func(cmd *cobra.Command, args []string) {
+		if flags.Profile != "" {
+			f, err := os.Create(flags.Profile)
+			if err != nil {
+				panic(err)
+			}
+			defer f.Close()
+			err = pprof.StartCPUProfile(f)
+			if err != nil {
+				panic(err)
+			}
+			defer pprof.StopCPUProfile()
+			defer println("CPU profiling data written to", flags.Profile)
+		}
+
 		cfg := config.GetDefaultConfig()
 		th := theme.GetDefaultTheme()
 
@@ -73,6 +88,10 @@ to make log analysis easier in the terminal.`,
 			scanner = bufio.NewScanner(file)
 		}
 
+		stdErrWriter := bufio.NewWriter(os.Stderr)
+		defer stdErrWriter.Flush()
+		stdOutWriter := bufio.NewWriter(os.Stdout)
+		defer stdOutWriter.Flush()
 		for scanner.Scan() {
 			line := scanner.Text()
 			coloredLine, err := renderer.Render(line)
@@ -80,10 +99,12 @@ to make log analysis easier in the terminal.`,
 				panic(err)
 			}
 			// writes coloredLine to stderr
-			fmt.Fprintln(os.Stderr, coloredLine)
+			stdErrWriter.WriteString(coloredLine)
+			stdErrWriter.WriteByte('\n')
 			if shouldWriteStdout {
 				// write original line to stdout
-				fmt.Fprintln(os.Stdout, line)
+				stdOutWriter.WriteString(line)
+				stdOutWriter.WriteByte('\n')
 			}
 		}
 	},
@@ -98,4 +119,5 @@ func Execute() {
 
 func init() {
 	rootCmd.Flags().StringVarP(&flags.InputFile, "input", "i", "", "Input file to read logs from, if not provided, reads from stdin")
+	rootCmd.Flags().StringVar(&flags.Profile, "profile", "", "Enable profiling")
 }
