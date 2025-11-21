@@ -4,16 +4,16 @@ Loglit is a powerful CLI tool designed to make log analysis easier by adding syn
 
 ## Features
 
--   **Syntax Highlighting**: Automatically highlights common log elements:
-    -   **Log Levels**: ERROR, WARN, INFO, DEBUG, TRACE, FATAL, etc.
-    -   **Dates & Times**: RFC3339, YYYY-MM-DD, MM/DD, durations (e.g., `10s`, `50ms`).
-    -   **Numbers**: Integers, floats, hex, binary, octal.
-    -   **Network**: IPv4, IPv6, MAC addresses, URLs.
-    -   **Identifiers**: UUIDs, MD5/SHA hashes.
-    -   **Code Elements**: Boolean, null, strings, paths.
--   **Input Flexibility**: Reads from standard input (stdin) or files.
--   **Custom Patterns**: Highlight specific terms or patterns using regex arguments.
--   **Output Handling**: Writes highlighted output to `stderr` (preserving stdout for piping if needed) and intelligently handles terminal detection.
+- **Syntax Highlighting**: Automatically highlights common log elements:
+  - **Log Levels**: ERROR, WARN, INFO, DEBUG, TRACE, FATAL, etc.
+  - **Dates & Times**: RFC3339, YYYY-MM-DD, MM/DD, durations (e.g., `10s`, `50ms`).
+  - **Numbers**: Integers, floats, hex, binary, octal.
+  - **Network**: IPv4, IPv6, MAC addresses, URLs.
+  - **Identifiers**: UUIDs, MD5/SHA hashes.
+  - **Code Elements**: Boolean, null, strings, paths.
+- **Input Flexibility**: Reads from standard input (stdin) or files.
+- **Custom Patterns**: Highlight specific terms or patterns using regex arguments.
+- **Output Handling**: Writes highlighted output to `stderr` (preserving stdout for piping if needed) and intelligently handles terminal detection.
 
 ## Installation
 
@@ -48,6 +48,7 @@ You can provide additional regex patterns as arguments to highlight them specifi
 loglit "connection timeout" "ERR-\d+" -i app.log
 ```
 
-## License
+## Acknowledgments
 
-[LICENSE](LICENSE)
+- [log-highlight.nvim](https://github.com/fei6409/log-highlight.nvim) - Inspiration for built-in patterns and highlighting styles.
+- [tokyonoight.nvim](https://github.com/folke/tokyonight.nvim) - Color scheme inspiration.
