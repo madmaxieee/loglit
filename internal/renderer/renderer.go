@@ -3,7 +3,6 @@ package renderer
 import (
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/madmaxieee/loglit/internal/config"
 	"github.com/madmaxieee/loglit/internal/proto"
@@ -36,60 +35,6 @@ type Match struct {
 	End       int
 	AnsiStart string
 	AnsiEnd   string
-}
-
-func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlight, text string) (MatchLayer, error) {
-	var matches MatchLayer
-
-	var wg sync.WaitGroup
-	type result struct {
-		matches MatchLayer
-		err     error
-	}
-	results := make([]result, len(syntaxList))
-
-	wg.Add(len(syntaxList))
-
-	// find matches for regex
-	for i, syn := range syntaxList {
-		p := syn.Pattern
-		if !p.HasValue() {
-			wg.Done()
-			continue
-		}
-		go func() {
-			defer wg.Done()
-			for _, idx := range p.FindAllStringIndex(text, -1) {
-				hl, ok := highlights[syn.Group]
-				if !ok {
-					results[i] = result{nil, fmt.Errorf("highlight group %s not found", syn.Group)}
-				}
-				results[i].matches = append(results[i].matches, Match{
-					Start:     idx[0],
-					End:       idx[1],
-					AnsiStart: hl.BuildAnsi(),
-					AnsiEnd:   hl.BuildAnsiReset(),
-				})
-			}
-		}()
-	}
-
-	wg.Wait()
-
-	for _, res := range results {
-		if res.err != nil {
-			return nil, res.err
-		}
-		matches = append(matches, res.matches...)
-	}
-
-	keywordMatches, err := findKeywordMatches(syntaxList, highlights, text)
-	if err != nil {
-		return nil, err
-	}
-	matches = append(matches, keywordMatches...)
-
-	return matches, nil
 }
 
 func (r Renderer) Render(text string) (string, error) {
@@ -134,7 +79,25 @@ func (r Renderer) Render(text string) (string, error) {
 
 	matches.Sort()
 
-	// build final string
+	return buildHighlightedString(text, matches), nil
+}
+
+func findMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlight, text string) (MatchLayer, error) {
+	patternMatches, err := findPatternMatches(syntaxList, highlights, text)
+	if err != nil {
+		return nil, err
+	}
+
+	keywordMatches, err := findKeywordMatches(syntaxList, highlights, text)
+	if err != nil {
+		return nil, err
+	}
+
+	matches := append(patternMatches, keywordMatches...)
+	return matches, nil
+}
+
+func buildHighlightedString(text string, matches MatchLayer) string {
 	var b strings.Builder
 	b.Grow(len(text) * 2)
 
@@ -153,5 +116,5 @@ func (r Renderer) Render(text string) (string, error) {
 	}
 	b.WriteString(style.ResetAllAnsi)
 
-	return b.String(), nil
+	return b.String()
 }
