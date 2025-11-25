@@ -3,9 +3,14 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
 	"regexp"
 	"runtime/pprof"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/madmaxieee/loglit/internal/config"
 	"github.com/madmaxieee/loglit/internal/proto"
@@ -18,8 +23,9 @@ import (
 )
 
 var flags struct {
-	InputFile string
-	Profile   string
+	InputFile  string
+	OutputFile string
+	Profile    string
 }
 
 var patternsFromArgs []regexp.Regexp
@@ -75,8 +81,6 @@ to make log analysis easier in the terminal.`,
 			utils.HandleError(err)
 		}
 
-		shouldWriteStdout := !term.IsTerminal(int(os.Stdout.Fd()))
-
 		var scanner *bufio.Scanner
 		if flags.InputFile == "" {
 			scanner = bufio.NewScanner(os.Stdin)
@@ -89,24 +93,69 @@ to make log analysis easier in the terminal.`,
 			scanner = bufio.NewScanner(file)
 		}
 
-		stdErrWriter := bufio.NewWriter(os.Stderr)
-		defer stdErrWriter.Flush()
-		stdOutWriter := bufio.NewWriter(os.Stdout)
-		defer stdOutWriter.Flush()
+		outputWriter := bufio.NewWriter(os.Stderr)
+
+		var rawOutputWriter *bufio.Writer
+		if flags.OutputFile == "" {
+			if !term.IsTerminal(int(os.Stdout.Fd())) {
+				rawOutputWriter = bufio.NewWriter(os.Stdout)
+			} else {
+				rawOutputWriter = bufio.NewWriter(io.Discard)
+			}
+		} else {
+			file, err := os.Open(flags.OutputFile)
+			if err != nil {
+				utils.HandleError(err)
+			}
+			defer file.Close()
+			rawOutputWriter = bufio.NewWriter(file)
+		}
+
+		var outputMu sync.Mutex
+		defer func() {
+			outputMu.Lock()
+			outputWriter.Flush()
+			rawOutputWriter.Flush()
+			outputMu.Unlock()
+		}()
+
+		// Flush periodically to ensure timely output for real-time streams, only when reading from stdin
+		if flags.InputFile == "" {
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+			go func() {
+				for range ticker.C {
+					outputMu.Lock()
+					outputWriter.Flush()
+					outputMu.Unlock()
+				}
+			}()
+		}
+
+		// Handle interrupt signal to flush output before exiting
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-c
+			outputMu.Lock()
+			outputWriter.Flush()
+			rawOutputWriter.Flush()
+			outputMu.Unlock()
+			os.Exit(0)
+		}()
+
 		for scanner.Scan() {
 			line := scanner.Text()
 			coloredLine, err := renderer.Render(line)
 			if err != nil {
 				utils.HandleError(err)
 			}
-			// writes coloredLine to stderr
-			stdErrWriter.WriteString(coloredLine)
-			stdErrWriter.WriteByte('\n')
-			if shouldWriteStdout {
-				// write original line to stdout
-				stdOutWriter.WriteString(line)
-				stdOutWriter.WriteByte('\n')
-			}
+			outputMu.Lock()
+			outputWriter.WriteString(coloredLine)
+			outputWriter.WriteByte('\n')
+			rawOutputWriter.WriteString(line)
+			rawOutputWriter.WriteByte('\n')
+			outputMu.Unlock()
 		}
 	},
 }
@@ -120,5 +169,6 @@ func Execute() {
 
 func init() {
 	rootCmd.Flags().StringVarP(&flags.InputFile, "input", "i", "", "Input file to read logs from, if not provided, reads from stdin")
+	rootCmd.Flags().StringVarP(&flags.OutputFile, "output", "o", "", "Output file to write processed logs to (not implemented yet)")
 	rootCmd.Flags().StringVar(&flags.Profile, "profile", "", "Enable profiling")
 }
