@@ -60,7 +60,7 @@ var DefaultConfig = Config{
 		// symbols
 		{
 			Group:   "LogSymbol",
-			Pattern: proto.MustCompile(`[!@#$%^&*;:?]`),
+			Pattern: proto.MustCompile(`[!@#$%^&*;:?=]`),
 		},
 
 		// string
