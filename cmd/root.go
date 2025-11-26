@@ -25,6 +25,7 @@ import (
 var flags struct {
 	InputFile  string
 	OutputFile string
+	AppendMode bool
 	Profile    string
 }
 
@@ -103,7 +104,13 @@ to make log analysis easier in the terminal.`,
 				rawOutputWriter = bufio.NewWriter(io.Discard)
 			}
 		} else {
-			file, err := os.Open(flags.OutputFile)
+			openFlag := os.O_CREATE | os.O_WRONLY
+			if flags.AppendMode {
+				openFlag |= os.O_APPEND
+			} else {
+				openFlag |= os.O_TRUNC
+			}
+			file, err := os.OpenFile(flags.OutputFile, openFlag, 0644)
 			if err != nil {
 				utils.HandleError(err)
 			}
@@ -169,6 +176,7 @@ func Execute() {
 
 func init() {
 	rootCmd.Flags().StringVarP(&flags.InputFile, "input", "i", "", "Input file to read logs from, if not provided, reads from stdin")
-	rootCmd.Flags().StringVarP(&flags.OutputFile, "output", "o", "", "Output file to write processed logs to (not implemented yet)")
-	rootCmd.Flags().StringVar(&flags.Profile, "profile", "", "Enable profiling")
+	rootCmd.Flags().StringVarP(&flags.OutputFile, "output", "o", "", "Output file to write processed logs to")
+	rootCmd.Flags().BoolVarP(&flags.AppendMode, "append", "a", false, "Append to the output file instead of overwriting")
+	rootCmd.Flags().StringVar(&flags.Profile, "profile", "", "Enable profiling, write CPU profile data to the specified file")
 }
