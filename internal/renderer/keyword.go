@@ -8,7 +8,7 @@ import (
 	"github.com/madmaxieee/loglit/internal/style"
 )
 
-var unicodeWordRe = regexp.MustCompile(`[\p{L}\p{M}\p{N}]+`)
+var unicodeWordRe = regexp.MustCompile(`[\p{L}\p{M}\p{N}_]+`)
 
 type Word struct {
 	Value string
