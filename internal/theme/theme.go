@@ -162,6 +162,9 @@ func (t *Theme) resolveOneLink(name string, visited map[string]bool) error {
 
 	hl.Fg = targetHl.Fg
 	hl.Bg = targetHl.Bg
+	hl.Bold = targetHl.Bold
+	hl.Italic = targetHl.Italic
+	hl.Underline = targetHl.Underline
 	hl.Link = nil
 
 	delete(visited, name)
