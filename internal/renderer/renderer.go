@@ -141,17 +141,19 @@ func findMatches(
 	keywordMap map[string]*style.Highlight,
 	text string,
 ) (MatchLayer, error) {
-	patternMatches, err := findPatternMatches(syntaxList, highlights, text)
+	var matches MatchLayer
+	var err error
+
+	err = findPatternMatches(&matches, syntaxList, highlights, text)
 	if err != nil {
 		return nil, err
 	}
 
-	keywordMatches, err := findKeywordMatches(keywordMap, text)
+	err = findKeywordMatches(&matches, keywordMap, text)
 	if err != nil {
 		return nil, err
 	}
 
-	matches := append(patternMatches, keywordMatches...)
 	matches.removeOverlaps()
 	matches.Sort()
 

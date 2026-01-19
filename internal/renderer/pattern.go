@@ -7,7 +7,12 @@ import (
 	"github.com/madmaxieee/loglit/internal/style"
 )
 
-func findPatternMatches(syntaxList []proto.Syntax, highlights map[string]*style.Highlight, text string) (MatchLayer, error) {
+func findPatternMatches(
+	matches *MatchLayer,
+	syntaxList []proto.Syntax,
+	highlights map[string]*style.Highlight,
+	text string,
+) error {
 	type result struct {
 		matches []Match
 		err     error
@@ -35,13 +40,12 @@ func findPatternMatches(syntaxList []proto.Syntax, highlights map[string]*style.
 		}
 	}
 
-	var matches MatchLayer
 	for _, res := range results {
 		if res.err != nil {
-			return nil, res.err
+			return res.err
 		}
-		matches = append(matches, res.matches...)
+		*matches = append(*matches, res.matches...)
 	}
 
-	return matches, nil
+	return nil
 }
