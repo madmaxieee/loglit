@@ -17,8 +17,8 @@ func BenchmarkRender(b *testing.B) {
 	}
 
 	line := "2023-10-27 10:00:00 INFO [main] This is a test log message with some numbers 12345 and a url https://example.com"
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		_, _ = r.Render(line)
 	}
 }
