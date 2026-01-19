@@ -2,7 +2,6 @@ package renderer
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/madmaxieee/loglit/internal/proto"
 	"github.com/madmaxieee/loglit/internal/style"
@@ -15,36 +14,26 @@ func findPatternMatches(syntaxList []proto.Syntax, highlights map[string]*style.
 	}
 	results := make([]result, len(syntaxList))
 
-	var wg sync.WaitGroup
-	wg.Add(len(syntaxList))
-
 	// find matches for regex
 	for i, syn := range syntaxList {
 		p := syn.Pattern
 		if !p.HasValue() {
-			wg.Done()
 			continue
 		}
 		hl, ok := highlights[syn.Group]
 		if !ok {
 			results[i] = result{nil, fmt.Errorf("highlight group %s not found", syn.Group)}
-			wg.Done()
 			continue
 		}
-		go func() {
-			defer wg.Done()
-			for _, idx := range p.FindAllStringIndex(text, -1) {
-				results[i].matches = append(results[i].matches, Match{
-					Start:     idx[0],
-					End:       idx[1],
-					AnsiStart: hl.BuildAnsi(),
-					AnsiEnd:   hl.BuildAnsiReset(),
-				})
-			}
-		}()
+		for _, idx := range p.FindAllStringIndex(text, -1) {
+			results[i].matches = append(results[i].matches, Match{
+				Start:     idx[0],
+				End:       idx[1],
+				AnsiStart: hl.BuildAnsi(),
+				AnsiEnd:   hl.BuildAnsiReset(),
+			})
+		}
 	}
-
-	wg.Wait()
 
 	var matches MatchLayer
 	for _, res := range results {
