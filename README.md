@@ -2,7 +2,7 @@
 
 Loglit is a powerful CLI tool designed to make log analysis easier by adding syntax highlighting to your logs in the terminal. It supports a wide range of built-in patterns and allows for custom regex highlighting.
 
-![demo](./assets/demo.gif)
+![demo](./assets/demo.png)
 
 ## Features
 
