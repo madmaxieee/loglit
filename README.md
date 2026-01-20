@@ -27,12 +27,10 @@ go install github.com/madmaxieee/loglit@latest
 
 ### Basic Usage
 
-Pipe logs into `loglit`:
+It writes highlighted output to stderr and raw output to stdout. This means you can "peek" highlighted logs in your terminal while simultaneously piping the clean raw logs to a file or another tool:
 
 ```bash
-cat application.log | loglit
-# or
-tail -f /var/log/syslog | loglit
+tail -f app.log | loglit > clean_logs.txt
 ```
 
 Read directly from a file:
