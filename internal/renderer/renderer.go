@@ -165,8 +165,7 @@ func buildHighlightedString(text string, matches MatchLayer) string {
 	b.Grow(len(text) * 2)
 
 	b.WriteString(text[:matches[0].Start])
-	for i := range len(matches) {
-		match := matches[i]
+	for i, match := range matches {
 		b.WriteString(match.AnsiStart)
 		b.WriteString(text[match.Start:match.End])
 		b.WriteString(match.AnsiEnd)
@@ -177,7 +176,6 @@ func buildHighlightedString(text string, matches MatchLayer) string {
 			b.WriteString(text[match.End:nextMatch.Start])
 		}
 	}
-	b.WriteString(style.ResetAllAnsi)
 
 	return b.String()
 }

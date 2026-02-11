@@ -48,3 +48,64 @@ func TestRender(t *testing.T) {
 		t.Error("expected ANSI escape codes")
 	}
 }
+
+func TestBuildHighlightedString(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		matches  MatchLayer
+		expected string
+	}{
+		{
+			name: "single match at start",
+			text: "hello world",
+			matches: MatchLayer{
+				{Start: 0, End: 5, AnsiStart: "<red>", AnsiEnd: "</red>"},
+			},
+			expected: "<red>hello</red> world",
+		},
+		{
+			name: "single match in middle",
+			text: "hello world",
+			matches: MatchLayer{
+				{Start: 6, End: 11, AnsiStart: "<blue>", AnsiEnd: "</blue>"},
+			},
+			expected: "hello <blue>world</blue>",
+		},
+		{
+			name: "single match at end",
+			text: "hello world",
+			matches: MatchLayer{
+				{Start: 6, End: 11, AnsiStart: "<green>", AnsiEnd: "</green>"},
+			},
+			expected: "hello <green>world</green>",
+		},
+		{
+			name: "multiple matches disjoint",
+			text: "foo bar baz",
+			matches: MatchLayer{
+				{Start: 0, End: 3, AnsiStart: "<r>", AnsiEnd: "</r>"},
+				{Start: 8, End: 11, AnsiStart: "<b>", AnsiEnd: "</b>"},
+			},
+			expected: "<r>foo</r> bar <b>baz</b>",
+		},
+		{
+			name: "matches touching",
+			text: "foobar",
+			matches: MatchLayer{
+				{Start: 0, End: 3, AnsiStart: "<r>", AnsiEnd: "</r>"},
+				{Start: 3, End: 6, AnsiStart: "<b>", AnsiEnd: "</b>"},
+			},
+			expected: "<r>foo</r><b>bar</b>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildHighlightedString(tt.text, tt.matches)
+			if got != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
