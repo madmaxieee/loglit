@@ -73,6 +73,7 @@ func Stack(top MatchLayer, bottom MatchLayer) MatchLayer {
 					Start:     bot.Start,
 					End:       top.Start,
 					AnsiStart: bot.AnsiStart,
+					AnsiEnd:   bot.AnsiEnd,
 				}
 				out = append(out, leftRemainder)
 			}
@@ -100,6 +101,7 @@ func Stack(top MatchLayer, bottom MatchLayer) MatchLayer {
 		}
 		if bot.Start < top.End && bot.End > top.End {
 			bottom[iBot].Start = top.End
+			out = append(out, top)
 			iTop++
 			continue
 		}
