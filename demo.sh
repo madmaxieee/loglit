@@ -14,7 +14,7 @@ while true; do
   echo "    at com.example.service.Network.connect(Network.java:45)"
   sleep 0.3
   # 4. Critical/Fatal (FATAL/CRITICAL with MAC Addr, Memory addresses)
-  echo "[$(date +%T)] [FATAL] Hardware fault detected on device aa:bb:cc:11:22:33 | memory_addr=0x7fff5fbff7c0 | temp=95.5C"
+  echo "[$(date +%T)] [FATAL] Hardware fault detected on device aa:bb:cc:11:22:33 | memory_addr=0x7fff5fbff7c0 | temp=95.5 C"
   sleep 0.5
   # 5. Verbose Trace (TRACE with complex floats, binary, JSON-like data)
   echo "T: $(date +%s) [TRACE] Sensor data dump: { \"v1\": 12.345, \"v2\": 1.5e-3, \"flags\": 0b10110011, \"valid\": false }"
