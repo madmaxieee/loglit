@@ -12,7 +12,7 @@ func (matches *MatchLayer) Sort() *MatchLayer {
 	sort.SliceStable(*matches, func(i, j int) bool {
 		a, b := (*matches)[i], (*matches)[j]
 		if a.Start == b.Start {
-			return a.End > b.End
+			return a.End < b.End
 		}
 		return a.Start < b.Start
 	})

@@ -118,12 +118,30 @@ func (r Renderer) Render(text string) (string, error) {
 		if !ok {
 			return text, fmt.Errorf("highlight group %q not found", "UserMatchLineBackground")
 		}
-		matches = Stack(matches, MatchLayer{{
+
+		// HACK: reapply background highlight after every match that resets it, to
+		// ensure the whole line is highlighted
+		result := []Match{{
 			Start:     0,
-			End:       len(text),
+			End:       0,
 			AnsiStart: userBgHighlight.BuildAnsi(),
-			AnsiEnd:   userBgHighlight.BuildAnsiReset(),
-		}})
+		}}
+		for _, m := range matches {
+			result = append(result, m)
+			if strings.Contains(m.AnsiEnd, style.ResetBgAnsi) {
+				result = append(result, Match{
+					Start:     m.End,
+					End:       m.End,
+					AnsiStart: userBgHighlight.BuildAnsi(),
+				})
+			}
+		}
+		result = append(result, Match{
+			Start:   len(text),
+			End:     len(text),
+			AnsiEnd: userBgHighlight.BuildAnsiReset(),
+		})
+		matches = result
 	}
 
 	if len(matches) == 0 {
