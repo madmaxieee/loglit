@@ -113,35 +113,26 @@ func (r Renderer) Render(text string) (string, error) {
 
 	matches := Stack(userMatches, builtinMatchesCombined)
 
+	prefix := ""
+	suffix := ""
+
 	if userMatches.Len() > 0 {
 		userBgHighlight, ok := r.Theme.HighlightMap["UserMatchLineBackground"]
 		if !ok {
 			return text, fmt.Errorf("highlight group %q not found", "UserMatchLineBackground")
 		}
 
-		// HACK: reapply background highlight after every match that resets it, to
-		// ensure the whole line is highlighted
-		result := []Match{{
-			Start:     0,
-			End:       0,
-			AnsiStart: userBgHighlight.BuildAnsi(),
-		}}
-		for _, m := range matches {
-			result = append(result, m)
-			if strings.Contains(m.AnsiEnd, style.ResetBgAnsi) {
-				result = append(result, Match{
-					Start:     m.End,
-					End:       m.End,
-					AnsiStart: userBgHighlight.BuildAnsi(),
-				})
+		// If we have user matches, the default background color for the line
+		// should be the user match line background color.
+		userBgAnsi := userBgHighlight.BuildAnsi()
+		for i := range matches {
+			if strings.Contains(matches[i].AnsiEnd, style.ResetBgAnsi) {
+				matches[i].AnsiEnd = strings.ReplaceAll(matches[i].AnsiEnd, style.ResetBgAnsi, userBgAnsi)
 			}
 		}
-		result = append(result, Match{
-			Start:   len(text),
-			End:     len(text),
-			AnsiEnd: userBgHighlight.BuildAnsiReset(),
-		})
-		matches = result
+
+		prefix = userBgAnsi
+		suffix = userBgHighlight.BuildAnsiReset()
 	}
 
 	if len(matches) == 0 {
@@ -150,7 +141,7 @@ func (r Renderer) Render(text string) (string, error) {
 
 	matches.Sort()
 
-	return buildHighlightedString(text, matches), nil
+	return prefix + buildHighlightedString(text, matches) + suffix, nil
 }
 
 func findMatches(

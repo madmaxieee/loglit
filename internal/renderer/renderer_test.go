@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/madmaxieee/loglit/internal/config"
+	"github.com/madmaxieee/loglit/internal/proto"
 	"github.com/madmaxieee/loglit/internal/theme"
 )
 
@@ -46,6 +47,47 @@ func TestRender(t *testing.T) {
 	}
 	if !strings.Contains(out, "\x1b[") {
 		t.Error("expected ANSI escape codes")
+	}
+}
+
+func TestRender_UserMatchBackground(t *testing.T) {
+	cfg := config.GetDefaultConfig()
+	th := theme.GetDefaultTheme()
+	cfg.UserSyntax = []proto.Syntax{{Group: "UserPattern", Pattern: proto.MustCompile(`USER\d+`)}}
+	r, err := New(cfg, th)
+	if err != nil {
+		t.Fatalf("failed to create renderer: %v", err)
+	}
+
+	line := "prefix USER123 suffix"
+	out, err := r.Render(line)
+	if err != nil {
+		t.Fatalf("render failed: %v", err)
+	}
+
+	if !strings.Contains(out, "\x1b[") {
+		t.Error("expected ANSI escape codes")
+	}
+	if out == line {
+		t.Error("expected highlighting, got raw string")
+	}
+
+	userBgHighlight := th.HighlightMap["UserMatchLineBackground"]
+	userBgAnsi := userBgHighlight.BuildAnsi()
+	userBgReset := userBgHighlight.BuildAnsiReset()
+
+	if !strings.HasPrefix(out, userBgAnsi) {
+		t.Errorf("expected output to start with UserMatchLineBackground ANSI %q, got %q", userBgAnsi, out)
+	}
+	if !strings.HasSuffix(out, userBgReset) {
+		t.Errorf("expected output to end with UserMatchLineBackground reset %q, got %q", userBgReset, out)
+	}
+
+	// The background is applied as a prefix and re-applied inside any match
+	// that would otherwise reset the background, so it occurs at least twice.
+	count := strings.Count(out, userBgAnsi)
+	if count < 2 {
+		t.Errorf("expected UserMatchLineBackground ANSI to occur at least twice, got %d occurrence(s)", count)
 	}
 }
 
