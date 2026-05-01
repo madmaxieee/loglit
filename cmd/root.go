@@ -14,6 +14,7 @@ import (
 
 	"github.com/madmaxieee/loglit/internal/config"
 	"github.com/madmaxieee/loglit/internal/proto"
+	"github.com/madmaxieee/loglit/internal/reader"
 	"github.com/madmaxieee/loglit/internal/renderer"
 	"github.com/madmaxieee/loglit/internal/theme"
 	"github.com/madmaxieee/loglit/internal/utils"
@@ -82,17 +83,18 @@ to make log analysis easier in the terminal.`,
 			utils.HandleError(err)
 		}
 
-		var scanner *bufio.Scanner
+		var inputReader io.Reader
 		if flags.InputFile == "" {
-			scanner = bufio.NewScanner(os.Stdin)
+			inputReader = os.Stdin
 		} else {
 			file, err := os.Open(flags.InputFile)
 			if err != nil {
 				utils.HandleError(err)
 			}
 			defer file.Close()
-			scanner = bufio.NewScanner(file)
+			inputReader = file
 		}
+		bufferedInput := bufio.NewReader(inputReader)
 
 		outputWriter := bufio.NewWriter(os.Stderr)
 
@@ -118,6 +120,8 @@ to make log analysis easier in the terminal.`,
 			rawOutputWriter = bufio.NewWriter(file)
 		}
 
+		isStderrTerminal := term.IsTerminal(int(os.Stderr.Fd()))
+
 		var outputMu sync.Mutex
 		defer func() {
 			outputMu.Lock()
@@ -126,6 +130,9 @@ to make log analysis easier in the terminal.`,
 			outputMu.Unlock()
 		}()
 
+		chunkCh := reader.ReadChunks(bufferedInput)
+		lb := reader.NewLineBuffer(renderer)
+
 		// Flush periodically to ensure timely output for real-time streams, only when reading from stdin
 		if flags.InputFile == "" {
 			ticker := time.NewTicker(500 * time.Millisecond)
@@ -133,7 +140,13 @@ to make log analysis easier in the terminal.`,
 			go func() {
 				for range ticker.C {
 					outputMu.Lock()
+					if isStderrTerminal {
+						lb.FlushPending(outputWriter, rawOutputWriter)
+					} else {
+						lb.FlushPending(nil, rawOutputWriter)
+					}
 					outputWriter.Flush()
+					rawOutputWriter.Flush()
 					outputMu.Unlock()
 				}
 			}()
@@ -145,25 +158,27 @@ to make log analysis easier in the terminal.`,
 		go func() {
 			<-c
 			outputMu.Lock()
+			if isStderrTerminal {
+				lb.FlushPending(outputWriter, rawOutputWriter)
+			} else {
+				lb.FlushPending(nil, rawOutputWriter)
+			}
 			outputWriter.Flush()
 			rawOutputWriter.Flush()
 			outputMu.Unlock()
 			os.Exit(0)
 		}()
 
-		for scanner.Scan() {
-			line := scanner.Text()
-			coloredLine, err := renderer.Render(line)
-			if err != nil {
-				utils.HandleError(err)
-			}
+		for chunk := range chunkCh {
 			outputMu.Lock()
-			outputWriter.WriteString(coloredLine)
-			outputWriter.WriteByte('\n')
-			rawOutputWriter.WriteString(line)
-			rawOutputWriter.WriteByte('\n')
+			lb.Append(chunk)
+			lb.ProcessCompleteLines(outputWriter, rawOutputWriter)
 			outputMu.Unlock()
 		}
+
+		outputMu.Lock()
+		lb.Finalize(outputWriter, rawOutputWriter)
+		outputMu.Unlock()
 	},
 }
 
