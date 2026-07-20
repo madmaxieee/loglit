@@ -32,6 +32,41 @@ var flags struct {
 
 var patternsFromArgs []regexp.Regexp
 
+var terminalDetector = term.IsTerminal
+
+type closeFunc func() error
+
+func (f closeFunc) Close() error { return f() }
+
+func openInputFile(path string) (*os.File, error) {
+	return os.Open(path)
+}
+
+func openOutputFile(path string, appendMode bool) (*os.File, error) {
+	openFlag := os.O_CREATE | os.O_WRONLY
+	if appendMode {
+		openFlag |= os.O_APPEND
+	} else {
+		openFlag |= os.O_TRUNC
+	}
+	return os.OpenFile(path, openFlag, 0644)
+}
+
+func rawOutputWriter(path string, stdout io.Writer, stdoutTerminal bool) (*bufio.Writer, io.Closer, error) {
+	if path == "" {
+		if stdoutTerminal {
+			return bufio.NewWriter(io.Discard), closeFunc(func() error { return nil }), nil
+		}
+		return bufio.NewWriter(stdout), closeFunc(func() error { return nil }), nil
+	}
+
+	file, err := openOutputFile(path, flags.AppendMode)
+	if err != nil {
+		return nil, nil, err
+	}
+	return bufio.NewWriter(file), file, nil
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "loglit",
 	Short: "Loglit is a CLI tool for syntax highlighting and filtering logs",
@@ -87,7 +122,7 @@ to make log analysis easier in the terminal.`,
 		if flags.InputFile == "" {
 			inputReader = os.Stdin
 		} else {
-			file, err := os.Open(flags.InputFile)
+			file, err := openInputFile(flags.InputFile)
 			if err != nil {
 				utils.HandleError(err)
 			}
@@ -98,29 +133,13 @@ to make log analysis easier in the terminal.`,
 
 		outputWriter := bufio.NewWriter(os.Stderr)
 
-		var rawOutputWriter *bufio.Writer
-		if flags.OutputFile == "" {
-			if !term.IsTerminal(int(os.Stdout.Fd())) {
-				rawOutputWriter = bufio.NewWriter(os.Stdout)
-			} else {
-				rawOutputWriter = bufio.NewWriter(io.Discard)
-			}
-		} else {
-			openFlag := os.O_CREATE | os.O_WRONLY
-			if flags.AppendMode {
-				openFlag |= os.O_APPEND
-			} else {
-				openFlag |= os.O_TRUNC
-			}
-			file, err := os.OpenFile(flags.OutputFile, openFlag, 0644)
-			if err != nil {
-				utils.HandleError(err)
-			}
-			defer file.Close()
-			rawOutputWriter = bufio.NewWriter(file)
+		rawOutputWriter, rawOutputCloser, err := rawOutputWriter(flags.OutputFile, os.Stdout, terminalDetector(int(os.Stdout.Fd())))
+		if err != nil {
+			utils.HandleError(err)
 		}
+		defer rawOutputCloser.Close()
 
-		isStderrTerminal := term.IsTerminal(int(os.Stderr.Fd()))
+		isStderrTerminal := terminalDetector(int(os.Stderr.Fd()))
 
 		var outputMu sync.Mutex
 		defer func() {
