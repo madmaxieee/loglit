@@ -50,12 +50,7 @@ func (lb *LineBuffer) ProcessCompleteLines(coloredWriter, rawWriter *bufio.Write
 		coloredWriter.WriteString(coloredLine)
 		coloredWriter.WriteByte('\n')
 
-		if lb.rawFlushed > 0 {
-			rawWriter.WriteString(line[lb.rawFlushed:])
-		} else {
-			rawWriter.WriteString(line)
-		}
-		rawWriter.WriteByte('\n')
+		rawWriter.Write(lb.buf[lb.rawFlushed : idx+1])
 
 		lb.buf = lb.buf[idx+1:]
 		lb.coloredFlushed = 0
@@ -81,9 +76,9 @@ func (lb *LineBuffer) FlushPending(coloredWriter, rawWriter *bufio.Writer) {
 		coloredWriter.WriteString(coloredLine)
 		lb.coloredFlushed = len(pending)
 	}
-	if rawWriter != nil && len(pending) > lb.rawFlushed {
-		rawWriter.WriteString(pending[lb.rawFlushed:])
-		lb.rawFlushed = len(pending)
+	if rawWriter != nil && len(lb.buf) > lb.rawFlushed {
+		rawWriter.Write(lb.buf[lb.rawFlushed:])
+		lb.rawFlushed = len(lb.buf)
 	}
 }
 
@@ -101,12 +96,7 @@ func (lb *LineBuffer) Finalize(coloredWriter, rawWriter *bufio.Writer) {
 	coloredWriter.WriteString(coloredLine)
 	coloredWriter.WriteByte('\n')
 
-	if lb.rawFlushed > 0 {
-		rawWriter.WriteString(line[lb.rawFlushed:])
-	} else {
-		rawWriter.WriteString(line)
-	}
-	rawWriter.WriteByte('\n')
+	rawWriter.Write(lb.buf[lb.rawFlushed:])
 
 	lb.buf = nil
 	lb.coloredFlushed = 0
