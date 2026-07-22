@@ -31,13 +31,15 @@ func resetCLIState(t *testing.T) {
 		_ = rootCmd.Flags().Set("output", oldFlags.OutputFile)
 		_ = rootCmd.Flags().Set("append", boolString(oldFlags.AppendMode))
 		_ = rootCmd.Flags().Set("profile", oldFlags.Profile)
+		_ = rootCmd.Flags().Set("color", oldFlags.Color)
 	})
 	flags = struct {
 		InputFile  string
 		OutputFile string
 		AppendMode bool
 		Profile    string
-	}{}
+		Color      string
+	}{Color: "auto"}
 	isTerminal = func(_ io.Writer) bool { return false }
 }
 
@@ -104,6 +106,50 @@ func TestRootKeepsColoredOutputForTTYStderr(t *testing.T) {
 	}
 	if !bytes.Contains(stderr.Bytes(), []byte("\x1b[")) {
 		t.Fatalf("stderr output = %q, want ANSI-colored output", stderr.String())
+	}
+}
+
+func TestRootColorModes(t *testing.T) {
+	tests := []struct {
+		name       string
+		mode       string
+		stderrTTY  bool
+		wantColors bool
+	}{
+		{name: "auto non-terminal", mode: "auto", wantColors: false},
+		{name: "auto terminal", mode: "auto", stderrTTY: true, wantColors: true},
+		{name: "always non-terminal", mode: "always", wantColors: true},
+		{name: "never terminal", mode: "never", stderrTTY: true, wantColors: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetCLIState(t)
+			var stdout, stderr bytes.Buffer
+			rootCmd.SetIn(bytes.NewBufferString("INFO\n"))
+			rootCmd.SetOut(&stdout)
+			rootCmd.SetErr(&stderr)
+			rootCmd.SetArgs([]string{"--color", tt.mode})
+			isTerminal = func(w io.Writer) bool { return tt.stderrTTY && w == &stderr }
+			if err := rootCmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			gotColors := bytes.Contains(stderr.Bytes(), []byte("\x1b["))
+			if gotColors != tt.wantColors {
+				t.Fatalf("colored output = %v, stderr = %q; want %v", gotColors, stderr.String(), tt.wantColors)
+			}
+			if stdout.String() != "INFO\n" {
+				t.Fatalf("stdout output = %q, want raw output", stdout.String())
+			}
+		})
+	}
+}
+
+func TestRootRejectsInvalidColorMode(t *testing.T) {
+	resetCLIState(t)
+	_, err := executeCLI(t, "INFO\n", "--color", "sometimes")
+	if err == nil || err.Error() != `invalid color value "sometimes": must be one of auto, always, or never` {
+		t.Fatalf("error = %v, want clear invalid color error", err)
 	}
 }
 

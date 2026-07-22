@@ -27,6 +27,7 @@ var flags struct {
 	OutputFile string
 	AppendMode bool
 	Profile    string
+	Color      string
 }
 
 var isTerminal = func(w io.Writer) bool {
@@ -73,6 +74,13 @@ var rootCmd = &cobra.Command{
 	Long: `Loglit reads logs from stdin or a file and applies syntax highlighting
 based on built-in patterns and user-provided regex patterns. It is designed
 to make log analysis easier in the terminal.`,
+
+	PreRunE: func(_ *cobra.Command, _ []string) error {
+		if flags.Color != "auto" && flags.Color != "always" && flags.Color != "never" {
+			return fmt.Errorf("invalid color value %q: must be one of auto, always, or never", flags.Color)
+		}
+		return nil
+	},
 
 	RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		var profileFile *os.File
@@ -138,7 +146,8 @@ to make log analysis easier in the terminal.`,
 		stderr := cmd.ErrOrStderr()
 		isStderrTerminal := isTerminal(stderr)
 		var coloredOutput *bufio.Writer
-		if isStderrTerminal {
+		colorsEnabled := flags.Color == "always" || flags.Color == "auto" && isStderrTerminal
+		if colorsEnabled {
 			coloredOutput = bufio.NewWriter(stderr)
 		}
 
@@ -232,4 +241,10 @@ func init() {
 	rootCmd.Flags().StringVarP(&flags.OutputFile, "output", "o", "", "Output file to write processed logs to")
 	rootCmd.Flags().BoolVarP(&flags.AppendMode, "append", "a", false, "Append to the output file instead of overwriting")
 	rootCmd.Flags().StringVar(&flags.Profile, "profile", "", "Enable profiling, write CPU profile data to the specified file")
+	rootCmd.Flags().StringVar(&flags.Color, "color", "auto", "Color mode: auto, always, or never")
+	if err := rootCmd.RegisterFlagCompletionFunc("color", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"auto", "always", "never"}, cobra.ShellCompDirectiveNoFileComp
+	}); err != nil {
+		panic(err)
+	}
 }
