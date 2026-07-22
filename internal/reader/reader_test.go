@@ -81,6 +81,26 @@ func TestLineBufferFinalizeWithoutNewline(t *testing.T) {
 	}
 }
 
+func TestLineBufferSkipsColoredOutputForCompleteLines(t *testing.T) {
+	lb, _, raw, _, rawWriter := testBuffer(t)
+	lb.Append([]byte("INFO\n"))
+	mustProcess(t, lb, nil, rawWriter)
+	_ = rawWriter.Flush()
+	if raw.String() != "INFO\n" {
+		t.Fatalf("raw output = %q, want %q", raw.String(), "INFO\n")
+	}
+}
+
+func TestLineBufferSkipsColoredOutputWhenFinalizing(t *testing.T) {
+	lb, _, raw, _, rawWriter := testBuffer(t)
+	lb.Append([]byte("INFO"))
+	mustFinalize(t, lb, nil, rawWriter)
+	_ = rawWriter.Flush()
+	if raw.String() != "INFO" {
+		t.Fatalf("raw output = %q, want %q", raw.String(), "INFO")
+	}
+}
+
 func TestLineBufferRepeatedPartialFlushes(t *testing.T) {
 	lb, _, raw, coloredWriter, rawWriter := testBuffer(t)
 	lb.Append([]byte("par"))

@@ -45,20 +45,22 @@ func (lb *LineBuffer) ProcessCompleteLines(coloredWriter, rawWriter *bufio.Write
 		}
 		line := string(lineBytes)
 
-		if lb.coloredFlushed > 0 {
+		if coloredWriter != nil && lb.coloredFlushed > 0 {
 			if _, err := coloredWriter.WriteString("\033[2K\r"); err != nil {
 				return err
 			}
 		}
-		coloredLine, err := lb.renderer.Render(line)
-		if err != nil {
-			return fmt.Errorf("render line: %w", err)
-		}
-		if _, err := coloredWriter.WriteString(coloredLine); err != nil {
-			return err
-		}
-		if err := coloredWriter.WriteByte('\n'); err != nil {
-			return err
+		if coloredWriter != nil {
+			coloredLine, err := lb.renderer.Render(line)
+			if err != nil {
+				return fmt.Errorf("render line: %w", err)
+			}
+			if _, err := coloredWriter.WriteString(coloredLine); err != nil {
+				return err
+			}
+			if err := coloredWriter.WriteByte('\n'); err != nil {
+				return err
+			}
 		}
 
 		if _, err := rawWriter.Write(lb.buf[lb.rawFlushed : idx+1]); err != nil {
@@ -114,20 +116,22 @@ func (lb *LineBuffer) Finalize(coloredWriter, rawWriter *bufio.Writer) error {
 		return nil
 	}
 	line := string(lb.buf)
-	if lb.coloredFlushed > 0 {
+	if coloredWriter != nil && lb.coloredFlushed > 0 {
 		if _, err := coloredWriter.WriteString("\033[2K\r"); err != nil {
 			return err
 		}
 	}
-	coloredLine, err := lb.renderer.Render(line)
-	if err != nil {
-		return fmt.Errorf("render final line: %w", err)
-	}
-	if _, err := coloredWriter.WriteString(coloredLine); err != nil {
-		return err
-	}
-	if err := coloredWriter.WriteByte('\n'); err != nil {
-		return err
+	if coloredWriter != nil {
+		coloredLine, err := lb.renderer.Render(line)
+		if err != nil {
+			return fmt.Errorf("render final line: %w", err)
+		}
+		if _, err := coloredWriter.WriteString(coloredLine); err != nil {
+			return err
+		}
+		if err := coloredWriter.WriteByte('\n'); err != nil {
+			return err
+		}
 	}
 
 	if _, err := rawWriter.Write(lb.buf[lb.rawFlushed:]); err != nil {

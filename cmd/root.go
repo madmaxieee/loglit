@@ -136,8 +136,11 @@ to make log analysis easier in the terminal.`,
 
 		// Open the two output channels
 		stderr := cmd.ErrOrStderr()
-		coloredOutput := bufio.NewWriter(stderr)
 		isStderrTerminal := isTerminal(stderr)
+		var coloredOutput *bufio.Writer
+		if isStderrTerminal {
+			coloredOutput = bufio.NewWriter(stderr)
+		}
 
 		stdout := cmd.OutOrStdout()
 		rawOutput, rawOutputCloser, err := rawOutputWriter(flags.OutputFile, stdout, isTerminal(stdout))
@@ -181,17 +184,13 @@ to make log analysis easier in the terminal.`,
 					return fmt.Errorf("write output: %w", err)
 				}
 			case <-tickerCh:
-				var err error
-				if isStderrTerminal {
-					err = lb.FlushPending(coloredOutput, rawOutput)
-				} else {
-					err = lb.FlushPending(nil, rawOutput)
-				}
-				if err != nil {
+				if err := lb.FlushPending(coloredOutput, rawOutput); err != nil {
 					return fmt.Errorf("flush output: %w", err)
 				}
-				if err := coloredOutput.Flush(); err != nil {
-					return fmt.Errorf("flush output: %w", err)
+				if coloredOutput != nil {
+					if err := coloredOutput.Flush(); err != nil {
+						return fmt.Errorf("flush output: %w", err)
+					}
 				}
 				if err := rawOutput.Flush(); err != nil {
 					return fmt.Errorf("flush output: %w", err)
@@ -199,12 +198,10 @@ to make log analysis easier in the terminal.`,
 			case <-signalCh:
 				// Interrupts retain best-effort behavior: flush what is pending,
 				// but do not turn cleanup failures into asynchronous errors.
-				if isStderrTerminal {
-					_ = lb.FlushPending(coloredOutput, rawOutput)
-				} else {
-					_ = lb.FlushPending(nil, rawOutput)
+				_ = lb.FlushPending(coloredOutput, rawOutput)
+				if coloredOutput != nil {
+					_ = coloredOutput.Flush()
 				}
-				_ = coloredOutput.Flush()
 				_ = rawOutput.Flush()
 				return nil
 			}
@@ -214,7 +211,10 @@ to make log analysis easier in the terminal.`,
 		if err := lb.Finalize(coloredOutput, rawOutput); err != nil {
 			finalizeErr = fmt.Errorf("write output: %w", err)
 		}
-		coloredErr := coloredOutput.Flush()
+		var coloredErr error
+		if coloredOutput != nil {
+			coloredErr = coloredOutput.Flush()
+		}
 		rawErr := rawOutput.Flush()
 		return errors.Join(finalizeErr, coloredErr, rawErr)
 	},

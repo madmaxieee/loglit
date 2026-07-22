@@ -73,6 +73,40 @@ func TestRootExecutesWithInjectedNonTTYIO(t *testing.T) {
 	}
 }
 
+func TestRootSkipsColoredOutputForNonTTYStderr(t *testing.T) {
+	resetCLIState(t)
+	var stdout, stderr bytes.Buffer
+	rootCmd.SetIn(bytes.NewBufferString("INFO\n"))
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs(nil)
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr output = %q, want empty", stderr.String())
+	}
+}
+
+func TestRootKeepsColoredOutputForTTYStderr(t *testing.T) {
+	resetCLIState(t)
+	var stdout, stderr bytes.Buffer
+	rootCmd.SetIn(bytes.NewBufferString("INFO\n"))
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs(nil)
+	isTerminal = func(w io.Writer) bool { return w == &stderr }
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if stdout.String() != "INFO\n" {
+		t.Fatalf("stdout output = %q, want raw output", stdout.String())
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("\x1b[")) {
+		t.Fatalf("stderr output = %q, want ANSI-colored output", stderr.String())
+	}
+}
+
 func TestRootReadsFileInput(t *testing.T) {
 	resetCLIState(t)
 	inputPath := filepath.Join(t.TempDir(), "input.log")
