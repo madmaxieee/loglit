@@ -135,6 +135,7 @@ to make log analysis easier in the terminal.`,
 		}
 		bufferedInput := bufio.NewReader(inputReader)
 
+		// Open the two output channels
 		stderr := cmd.ErrOrStderr()
 		coloredOutput := bufio.NewWriter(stderr)
 		isStderrTerminal := isTerminal(stderr)
@@ -150,6 +151,7 @@ to make log analysis easier in the terminal.`,
 			}
 		}()
 
+		// Set up line buffer reader
 		var outputMu sync.Mutex
 		chunkCh := reader.ReadChunks(bufferedInput)
 		lb := reader.NewLineBuffer(renderer)
@@ -205,6 +207,7 @@ to make log analysis easier in the terminal.`,
 			}
 		}()
 
+		// Main log processing loop
 		for chunk := range chunkCh {
 			outputMu.Lock()
 			lb.Append(chunk)
