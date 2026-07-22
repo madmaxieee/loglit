@@ -11,16 +11,19 @@ import (
 func resetCLIState(t *testing.T) {
 	t.Helper()
 	oldFlags := flags
-	oldPatterns := patternsFromArgs
 	oldIsTerminal := isTerminal
+	oldIn, oldOut, oldErr := rootCmd.InOrStdin(), rootCmd.OutOrStdout(), rootCmd.ErrOrStderr()
 	t.Cleanup(func() {
 		flags = oldFlags
-		patternsFromArgs = oldPatterns
 		isTerminal = oldIsTerminal
-		rootCmd.Flags().Set("input", oldFlags.InputFile)
-		rootCmd.Flags().Set("output", oldFlags.OutputFile)
-		rootCmd.Flags().Set("append", boolString(oldFlags.AppendMode))
-		rootCmd.Flags().Set("profile", oldFlags.Profile)
+		rootCmd.SetIn(oldIn)
+		rootCmd.SetOut(oldOut)
+		rootCmd.SetErr(oldErr)
+		rootCmd.SetArgs(nil)
+		_ = rootCmd.Flags().Set("input", oldFlags.InputFile)
+		_ = rootCmd.Flags().Set("output", oldFlags.OutputFile)
+		_ = rootCmd.Flags().Set("append", boolString(oldFlags.AppendMode))
+		_ = rootCmd.Flags().Set("profile", oldFlags.Profile)
 	})
 	flags = struct {
 		InputFile  string
@@ -28,7 +31,7 @@ func resetCLIState(t *testing.T) {
 		AppendMode bool
 		Profile    string
 	}{}
-	patternsFromArgs = nil
+	isTerminal = func(_ io.Writer) bool { return false }
 }
 
 func boolString(value bool) string {
@@ -38,105 +41,85 @@ func boolString(value bool) string {
 	return "false"
 }
 
-func TestCLIInputFileReading(t *testing.T) {
+func executeCLI(t *testing.T, input string, args ...string) (string, error) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	rootCmd.SetIn(bytes.NewBufferString(input))
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs(args)
+	err := rootCmd.Execute()
+	if err != nil && stderr.Len() > 0 {
+		t.Logf("stderr: %s", stderr.String())
+	}
+	return stdout.String(), err
+}
+
+func TestRootExecutesWithInjectedNonTTYIO(t *testing.T) {
 	resetCLIState(t)
-	path := filepath.Join(t.TempDir(), "input.log")
-	if err := os.WriteFile(path, []byte("one\ntwo\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	file, err := openInputFile(path)
+	output, err := executeCLI(t, "one\ntwo\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
-	got, err := io.ReadAll(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != "one\ntwo\n" {
-		t.Fatalf("input = %q", got)
+	if output != "one\ntwo\n" {
+		t.Fatalf("output = %q, want input unchanged", output)
 	}
 }
 
-func TestCLIRawStdoutRouting(t *testing.T) {
+func TestRootReadsFileInput(t *testing.T) {
 	resetCLIState(t)
-	var stdout bytes.Buffer
-	isTerminal = func(io.Writer) bool { return false }
-	writer, closer, err := rawOutputWriter("", &stdout, isTerminal(&stdout))
+	inputPath := filepath.Join(t.TempDir(), "input.log")
+	if err := os.WriteFile(inputPath, []byte("from file\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	output, err := executeCLI(t, "", "--input", inputPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer closer.Close()
-	_, _ = writer.WriteString("raw output")
-	_ = writer.Flush()
-	if stdout.String() != "raw output" {
-		t.Fatalf("stdout = %q", stdout.String())
-	}
-
-	stdout.Reset()
-	isTerminal = func(io.Writer) bool { return true }
-	writer, closer, err = rawOutputWriter("", &stdout, isTerminal(&stdout))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer closer.Close()
-	_, _ = writer.WriteString("hidden")
-	_ = writer.Flush()
-	if stdout.Len() != 0 {
-		t.Fatalf("terminal stdout = %q, want empty", stdout.String())
+	if output != "from file\n" {
+		t.Fatalf("output = %q", output)
 	}
 }
 
-func TestCLIOutputOverwriteAndAppend(t *testing.T) {
+func TestRootOutputOverwriteAndAppend(t *testing.T) {
 	resetCLIState(t)
-	path := filepath.Join(t.TempDir(), "output.log")
-	if err := os.WriteFile(path, []byte("old"), 0644); err != nil {
+	outputPath := filepath.Join(t.TempDir(), "output.log")
+	if err := os.WriteFile(outputPath, []byte("old"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	flags.AppendMode = false
-	writer, closer, err := rawOutputWriter(path, io.Discard, false)
+	if _, err := executeCLI(t, "new\n", "--output", outputPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := executeCLI(t, "+\n", "--output", outputPath, "--append"); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(outputPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = writer.WriteString("new")
-	_ = writer.Flush()
-	_ = closer.Close()
-	got, _ := os.ReadFile(path)
-	if string(got) != "new" {
-		t.Fatalf("overwrite output = %q", got)
-	}
-
-	flags.AppendMode = true
-	writer, closer, err = rawOutputWriter(path, io.Discard, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _ = writer.WriteString("+")
-	_ = writer.Flush()
-	_ = closer.Close()
-	got, _ = os.ReadFile(path)
-	if string(got) != "new+" {
-		t.Fatalf("append output = %q", got)
+	if string(contents) != "new\n+\n" {
+		t.Fatalf("output file = %q", contents)
 	}
 }
 
-func TestCLIInvalidRegex(t *testing.T) {
+func TestRootRejectsInvalidRegex(t *testing.T) {
 	resetCLIState(t)
-	err := rootCmd.Args(rootCmd, []string{"["})
+	_, err := executeCLI(t, "input\n", "[")
 	if err == nil {
 		t.Fatal("invalid regex unexpectedly accepted")
 	}
-	if patternsFromArgs != nil {
-		t.Fatalf("invalid regex changed patterns: %v", patternsFromArgs)
-	}
 }
 
-func TestCLIFileOpenErrors(t *testing.T) {
+func TestRootReportsFileOpenFailures(t *testing.T) {
 	resetCLIState(t)
-	if _, err := openInputFile(filepath.Join(t.TempDir(), "missing")); err == nil {
-		t.Fatal("missing input unexpectedly opened")
+	_, err := executeCLI(t, "", "--input", filepath.Join(t.TempDir(), "missing"))
+	if err == nil {
+		t.Fatal("missing input unexpectedly succeeded")
 	}
-	if _, err := openOutputFile(filepath.Join(t.TempDir(), "missing", "output"), false); err == nil {
-		t.Fatal("invalid output path unexpectedly opened")
+
+	resetCLIState(t)
+	_, err = executeCLI(t, "input\n", "--output", filepath.Join(t.TempDir(), "missing", "output"))
+	if err == nil {
+		t.Fatal("invalid output path unexpectedly succeeded")
 	}
 }

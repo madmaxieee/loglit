@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,7 +18,6 @@ import (
 	"github.com/madmaxieee/loglit/internal/reader"
 	"github.com/madmaxieee/loglit/internal/renderer"
 	"github.com/madmaxieee/loglit/internal/theme"
-	"github.com/madmaxieee/loglit/internal/utils"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -29,8 +29,6 @@ var flags struct {
 	AppendMode bool
 	Profile    string
 }
-
-var patternsFromArgs []regexp.Regexp
 
 var isTerminal = func(w io.Writer) bool {
 	file, ok := w.(*os.File)
@@ -77,7 +75,30 @@ var rootCmd = &cobra.Command{
 based on built-in patterns and user-provided regex patterns. It is designed
 to make log analysis easier in the terminal.`,
 
-	Args: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) (runErr error) {
+		var profileFile *os.File
+		if flags.Profile != "" {
+			var err error
+			profileFile, err = os.Create(flags.Profile)
+			if err != nil {
+				return fmt.Errorf("create profile: %w", err)
+			}
+			err = pprof.StartCPUProfile(profileFile)
+			if err != nil {
+				return errors.Join(fmt.Errorf("start CPU profile: %w", err), profileFile.Close())
+			}
+			defer func() {
+				pprof.StopCPUProfile()
+				if err := profileFile.Close(); err != nil {
+					runErr = errors.Join(runErr, fmt.Errorf("close profile: %w", err))
+				}
+			}()
+			defer fmt.Fprintln(cmd.OutOrStdout(), "CPU profiling data written to", flags.Profile)
+		}
+
+		cfg := config.GetDefaultConfig()
+		th := theme.GetDefaultTheme()
+
 		for _, arg := range args {
 			if arg == "" {
 				continue
@@ -86,39 +107,15 @@ to make log analysis easier in the terminal.`,
 			if err != nil {
 				return fmt.Errorf("invalid regex pattern '%s': %v", arg, err)
 			}
-			patternsFromArgs = append(patternsFromArgs, *pattern)
-		}
-		return nil
-	},
-
-	Run: func(cmd *cobra.Command, args []string) {
-		if flags.Profile != "" {
-			f, err := os.Create(flags.Profile)
-			if err != nil {
-				utils.HandleError(err)
-			}
-			defer f.Close()
-			err = pprof.StartCPUProfile(f)
-			if err != nil {
-				utils.HandleError(err)
-			}
-			defer pprof.StopCPUProfile()
-			defer println("CPU profiling data written to", flags.Profile)
-		}
-
-		cfg := config.GetDefaultConfig()
-		th := theme.GetDefaultTheme()
-
-		for _, pattern := range patternsFromArgs {
 			cfg.UserSyntax = append(cfg.UserSyntax, proto.Syntax{
 				Group:   "UserPattern",
-				Pattern: proto.Pattern{Regexp: &pattern},
+				Pattern: proto.Pattern{Regexp: pattern},
 			})
 		}
 
 		renderer, err := renderer.New(cfg, th)
 		if err != nil {
-			utils.HandleError(err)
+			return fmt.Errorf("create renderer: %w", err)
 		}
 
 		var inputReader io.Reader
@@ -127,9 +124,13 @@ to make log analysis easier in the terminal.`,
 		} else {
 			file, err := openInputFile(flags.InputFile)
 			if err != nil {
-				utils.HandleError(err)
+				return fmt.Errorf("open input file: %w", err)
 			}
-			defer file.Close()
+			defer func() {
+				if err := file.Close(); err != nil {
+					runErr = errors.Join(runErr, fmt.Errorf("close input file: %w", err))
+				}
+			}()
 			inputReader = file
 		}
 		bufferedInput := bufio.NewReader(inputReader)
@@ -141,18 +142,15 @@ to make log analysis easier in the terminal.`,
 		stdout := cmd.OutOrStdout()
 		rawOutput, rawOutputCloser, err := rawOutputWriter(flags.OutputFile, stdout, isTerminal(stdout))
 		if err != nil {
-			utils.HandleError(err)
+			return fmt.Errorf("open output: %w", err)
 		}
-		defer rawOutputCloser.Close()
-
-		var outputMu sync.Mutex
 		defer func() {
-			outputMu.Lock()
-			coloredOutput.Flush()
-			rawOutput.Flush()
-			outputMu.Unlock()
+			if err := rawOutputCloser.Close(); err != nil {
+				runErr = errors.Join(runErr, fmt.Errorf("close output: %w", err))
+			}
 		}()
 
+		var outputMu sync.Mutex
 		chunkCh := reader.ReadChunks(bufferedInput)
 		lb := reader.NewLineBuffer(renderer)
 
@@ -160,17 +158,24 @@ to make log analysis easier in the terminal.`,
 		if flags.InputFile == "" {
 			ticker := time.NewTicker(500 * time.Millisecond)
 			defer ticker.Stop()
+			stopTicker := make(chan struct{})
+			defer close(stopTicker)
 			go func() {
-				for range ticker.C {
-					outputMu.Lock()
-					if isStderrTerminal {
-						lb.FlushPending(coloredOutput, rawOutput)
-					} else {
-						lb.FlushPending(nil, rawOutput)
+				for {
+					select {
+					case <-stopTicker:
+						return
+					case <-ticker.C:
+						outputMu.Lock()
+						if isStderrTerminal {
+							lb.FlushPending(coloredOutput, rawOutput)
+						} else {
+							lb.FlushPending(nil, rawOutput)
+						}
+						coloredOutput.Flush()
+						rawOutput.Flush()
+						outputMu.Unlock()
 					}
-					coloredOutput.Flush()
-					rawOutput.Flush()
-					outputMu.Unlock()
 				}
 			}()
 		}
@@ -178,18 +183,26 @@ to make log analysis easier in the terminal.`,
 		// Handle interrupt signal to flush output before exiting
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		stopSignal := make(chan struct{})
+		defer func() {
+			signal.Stop(c)
+			close(stopSignal)
+		}()
 		go func() {
-			<-c
-			outputMu.Lock()
-			if isStderrTerminal {
-				lb.FlushPending(coloredOutput, rawOutput)
-			} else {
-				lb.FlushPending(nil, rawOutput)
+			select {
+			case <-stopSignal:
+				return
+			case <-c:
+				outputMu.Lock()
+				if isStderrTerminal {
+					lb.FlushPending(coloredOutput, rawOutput)
+				} else {
+					lb.FlushPending(nil, rawOutput)
+				}
+				coloredOutput.Flush()
+				rawOutput.Flush()
+				outputMu.Unlock()
 			}
-			coloredOutput.Flush()
-			rawOutput.Flush()
-			outputMu.Unlock()
-			os.Exit(0)
 		}()
 
 		for chunk := range chunkCh {
@@ -201,7 +214,10 @@ to make log analysis easier in the terminal.`,
 
 		outputMu.Lock()
 		lb.Finalize(coloredOutput, rawOutput)
+		coloredErr := coloredOutput.Flush()
+		rawErr := rawOutput.Flush()
 		outputMu.Unlock()
+		return errors.Join(coloredErr, rawErr)
 	},
 }
 
