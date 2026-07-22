@@ -32,7 +32,10 @@ var flags struct {
 
 var patternsFromArgs []regexp.Regexp
 
-var terminalDetector = term.IsTerminal
+var isTerminal = func(w io.Writer) bool {
+	file, ok := w.(*os.File)
+	return ok && term.IsTerminal(int(file.Fd()))
+}
 
 type closeFunc func() error
 
@@ -120,7 +123,7 @@ to make log analysis easier in the terminal.`,
 
 		var inputReader io.Reader
 		if flags.InputFile == "" {
-			inputReader = os.Stdin
+			inputReader = cmd.InOrStdin()
 		} else {
 			file, err := openInputFile(flags.InputFile)
 			if err != nil {
@@ -131,21 +134,22 @@ to make log analysis easier in the terminal.`,
 		}
 		bufferedInput := bufio.NewReader(inputReader)
 
-		outputWriter := bufio.NewWriter(os.Stderr)
+		stderr := cmd.ErrOrStderr()
+		coloredOutput := bufio.NewWriter(stderr)
+		isStderrTerminal := isTerminal(stderr)
 
-		rawOutputWriter, rawOutputCloser, err := rawOutputWriter(flags.OutputFile, os.Stdout, terminalDetector(int(os.Stdout.Fd())))
+		stdout := cmd.OutOrStdout()
+		rawOutput, rawOutputCloser, err := rawOutputWriter(flags.OutputFile, stdout, isTerminal(stdout))
 		if err != nil {
 			utils.HandleError(err)
 		}
 		defer rawOutputCloser.Close()
 
-		isStderrTerminal := terminalDetector(int(os.Stderr.Fd()))
-
 		var outputMu sync.Mutex
 		defer func() {
 			outputMu.Lock()
-			outputWriter.Flush()
-			rawOutputWriter.Flush()
+			coloredOutput.Flush()
+			rawOutput.Flush()
 			outputMu.Unlock()
 		}()
 
@@ -160,12 +164,12 @@ to make log analysis easier in the terminal.`,
 				for range ticker.C {
 					outputMu.Lock()
 					if isStderrTerminal {
-						lb.FlushPending(outputWriter, rawOutputWriter)
+						lb.FlushPending(coloredOutput, rawOutput)
 					} else {
-						lb.FlushPending(nil, rawOutputWriter)
+						lb.FlushPending(nil, rawOutput)
 					}
-					outputWriter.Flush()
-					rawOutputWriter.Flush()
+					coloredOutput.Flush()
+					rawOutput.Flush()
 					outputMu.Unlock()
 				}
 			}()
@@ -178,12 +182,12 @@ to make log analysis easier in the terminal.`,
 			<-c
 			outputMu.Lock()
 			if isStderrTerminal {
-				lb.FlushPending(outputWriter, rawOutputWriter)
+				lb.FlushPending(coloredOutput, rawOutput)
 			} else {
-				lb.FlushPending(nil, rawOutputWriter)
+				lb.FlushPending(nil, rawOutput)
 			}
-			outputWriter.Flush()
-			rawOutputWriter.Flush()
+			coloredOutput.Flush()
+			rawOutput.Flush()
 			outputMu.Unlock()
 			os.Exit(0)
 		}()
@@ -191,12 +195,12 @@ to make log analysis easier in the terminal.`,
 		for chunk := range chunkCh {
 			outputMu.Lock()
 			lb.Append(chunk)
-			lb.ProcessCompleteLines(outputWriter, rawOutputWriter)
+			lb.ProcessCompleteLines(coloredOutput, rawOutput)
 			outputMu.Unlock()
 		}
 
 		outputMu.Lock()
-		lb.Finalize(outputWriter, rawOutputWriter)
+		lb.Finalize(coloredOutput, rawOutput)
 		outputMu.Unlock()
 	},
 }

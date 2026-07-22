@@ -12,11 +12,11 @@ func resetCLIState(t *testing.T) {
 	t.Helper()
 	oldFlags := flags
 	oldPatterns := patternsFromArgs
-	oldDetector := terminalDetector
+	oldIsTerminal := isTerminal
 	t.Cleanup(func() {
 		flags = oldFlags
 		patternsFromArgs = oldPatterns
-		terminalDetector = oldDetector
+		isTerminal = oldIsTerminal
 		rootCmd.Flags().Set("input", oldFlags.InputFile)
 		rootCmd.Flags().Set("output", oldFlags.OutputFile)
 		rootCmd.Flags().Set("append", boolString(oldFlags.AppendMode))
@@ -61,8 +61,8 @@ func TestCLIInputFileReading(t *testing.T) {
 func TestCLIRawStdoutRouting(t *testing.T) {
 	resetCLIState(t)
 	var stdout bytes.Buffer
-	terminalDetector = func(int) bool { return false }
-	writer, closer, err := rawOutputWriter("", &stdout, terminalDetector(0))
+	isTerminal = func(io.Writer) bool { return false }
+	writer, closer, err := rawOutputWriter("", &stdout, isTerminal(&stdout))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,8 +74,8 @@ func TestCLIRawStdoutRouting(t *testing.T) {
 	}
 
 	stdout.Reset()
-	terminalDetector = func(int) bool { return true }
-	writer, closer, err = rawOutputWriter("", &stdout, terminalDetector(0))
+	isTerminal = func(io.Writer) bool { return true }
+	writer, closer, err = rawOutputWriter("", &stdout, isTerminal(&stdout))
 	if err != nil {
 		t.Fatal(err)
 	}
