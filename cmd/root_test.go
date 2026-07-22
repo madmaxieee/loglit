@@ -2,11 +2,18 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+var errCommandWriter = errors.New("command writer failed")
+
+type commandFailingWriter struct{}
+
+func (commandFailingWriter) Write([]byte) (int, error) { return 0, errCommandWriter }
 
 func resetCLIState(t *testing.T) {
 	t.Helper()
@@ -121,5 +128,16 @@ func TestRootReportsFileOpenFailures(t *testing.T) {
 	_, err = executeCLI(t, "input\n", "--output", filepath.Join(t.TempDir(), "missing", "output"))
 	if err == nil {
 		t.Fatal("invalid output path unexpectedly succeeded")
+	}
+}
+
+func TestRootReportsInjectedWriterFailure(t *testing.T) {
+	resetCLIState(t)
+	rootCmd.SetIn(bytes.NewBufferString("line\n"))
+	rootCmd.SetOut(commandFailingWriter{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs(nil)
+	if err := rootCmd.Execute(); err == nil || !errors.Is(err, errCommandWriter) {
+		t.Fatalf("error = %v, want %v", err, errCommandWriter)
 	}
 }

@@ -3,6 +3,7 @@ package reader
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 
 	"github.com/madmaxieee/loglit/internal/renderer"
@@ -29,8 +30,9 @@ func (lb *LineBuffer) Append(data []byte) {
 
 // ProcessCompleteLines finds and renders all complete lines (ending in \n),
 // writing them to the provided writers. It handles clearing previously-flushed
-// partial output for the colored writer using ANSI escape sequences.
-func (lb *LineBuffer) ProcessCompleteLines(coloredWriter, rawWriter *bufio.Writer) {
+// partial output for the colored writer using ANSI escape sequences. It returns
+// the first writer error encountered.
+func (lb *LineBuffer) ProcessCompleteLines(coloredWriter, rawWriter *bufio.Writer) error {
 	for {
 		idx := bytes.IndexByte(lb.buf, '\n')
 		if idx == -1 {
@@ -44,18 +46,30 @@ func (lb *LineBuffer) ProcessCompleteLines(coloredWriter, rawWriter *bufio.Write
 		line := string(lineBytes)
 
 		if lb.coloredFlushed > 0 {
-			coloredWriter.WriteString("\033[2K\r")
+			if _, err := coloredWriter.WriteString("\033[2K\r"); err != nil {
+				return err
+			}
 		}
-		coloredLine, _ := lb.renderer.Render(line)
-		coloredWriter.WriteString(coloredLine)
-		coloredWriter.WriteByte('\n')
+		coloredLine, err := lb.renderer.Render(line)
+		if err != nil {
+			return fmt.Errorf("render line: %w", err)
+		}
+		if _, err := coloredWriter.WriteString(coloredLine); err != nil {
+			return err
+		}
+		if err := coloredWriter.WriteByte('\n'); err != nil {
+			return err
+		}
 
-		rawWriter.Write(lb.buf[lb.rawFlushed : idx+1])
+		if _, err := rawWriter.Write(lb.buf[lb.rawFlushed : idx+1]); err != nil {
+			return err
+		}
 
 		lb.buf = lb.buf[idx+1:]
 		lb.coloredFlushed = 0
 		lb.rawFlushed = 0
 	}
+	return nil
 }
 
 // FlushPending writes any buffered but not-yet-completed line data to the
@@ -64,43 +78,66 @@ func (lb *LineBuffer) ProcessCompleteLines(coloredWriter, rawWriter *bufio.Write
 //
 // For the colored writer, the pending line is rendered and the entire line is
 // redrawn (after clearing the previous partial output) so that partial lines
-// appear colorized in real time.
-func (lb *LineBuffer) FlushPending(coloredWriter, rawWriter *bufio.Writer) {
+// appear colorized in real time. It returns the first writer error encountered.
+func (lb *LineBuffer) FlushPending(coloredWriter, rawWriter *bufio.Writer) error {
 	if len(lb.buf) == 0 {
-		return
+		return nil
 	}
 	pending := string(lb.buf)
 	if coloredWriter != nil && len(pending) > lb.coloredFlushed {
-		coloredWriter.WriteString("\033[2K\r")
-		coloredLine, _ := lb.renderer.Render(pending)
-		coloredWriter.WriteString(coloredLine)
+		if _, err := coloredWriter.WriteString("\033[2K\r"); err != nil {
+			return err
+		}
+		coloredLine, err := lb.renderer.Render(pending)
+		if err != nil {
+			return fmt.Errorf("render pending line: %w", err)
+		}
+		if _, err := coloredWriter.WriteString(coloredLine); err != nil {
+			return err
+		}
 		lb.coloredFlushed = len(pending)
 	}
 	if rawWriter != nil && len(lb.buf) > lb.rawFlushed {
-		rawWriter.Write(lb.buf[lb.rawFlushed:])
+		if _, err := rawWriter.Write(lb.buf[lb.rawFlushed:]); err != nil {
+			return err
+		}
 		lb.rawFlushed = len(lb.buf)
 	}
+	return nil
 }
 
 // Finalize treats any remaining buffered data as a final line and writes it
-// to the writers, even if it lacks a trailing newline.
-func (lb *LineBuffer) Finalize(coloredWriter, rawWriter *bufio.Writer) {
+// to the writers, even if it lacks a trailing newline. It returns the first
+// writer error encountered.
+func (lb *LineBuffer) Finalize(coloredWriter, rawWriter *bufio.Writer) error {
 	if len(lb.buf) == 0 {
-		return
+		return nil
 	}
 	line := string(lb.buf)
 	if lb.coloredFlushed > 0 {
-		coloredWriter.WriteString("\033[2K\r")
+		if _, err := coloredWriter.WriteString("\033[2K\r"); err != nil {
+			return err
+		}
 	}
-	coloredLine, _ := lb.renderer.Render(line)
-	coloredWriter.WriteString(coloredLine)
-	coloredWriter.WriteByte('\n')
+	coloredLine, err := lb.renderer.Render(line)
+	if err != nil {
+		return fmt.Errorf("render final line: %w", err)
+	}
+	if _, err := coloredWriter.WriteString(coloredLine); err != nil {
+		return err
+	}
+	if err := coloredWriter.WriteByte('\n'); err != nil {
+		return err
+	}
 
-	rawWriter.Write(lb.buf[lb.rawFlushed:])
+	if _, err := rawWriter.Write(lb.buf[lb.rawFlushed:]); err != nil {
+		return err
+	}
 
 	lb.buf = nil
 	lb.coloredFlushed = 0
 	lb.rawFlushed = 0
+	return nil
 }
 
 // ReadChunks reads data from the provided reader in chunks and sends them

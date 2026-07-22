@@ -3,9 +3,13 @@ package reader
 import (
 	"bufio"
 	"bytes"
+	"errors"
+	"io"
+	"regexp"
 	"testing"
 
 	"github.com/madmaxieee/loglit/internal/config"
+	"github.com/madmaxieee/loglit/internal/proto"
 	"github.com/madmaxieee/loglit/internal/renderer"
 	"github.com/madmaxieee/loglit/internal/theme"
 )
@@ -18,6 +22,27 @@ func testBuffer(t *testing.T) (*LineBuffer, *bytes.Buffer, *bytes.Buffer, *bufio
 	}
 	colored, raw := new(bytes.Buffer), new(bytes.Buffer)
 	return NewLineBuffer(r), colored, raw, bufio.NewWriter(colored), bufio.NewWriter(raw)
+}
+
+func mustProcess(t *testing.T, lb *LineBuffer, coloredWriter, rawWriter *bufio.Writer) {
+	t.Helper()
+	if err := lb.ProcessCompleteLines(coloredWriter, rawWriter); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustFlushPending(t *testing.T, lb *LineBuffer, coloredWriter, rawWriter *bufio.Writer) {
+	t.Helper()
+	if err := lb.FlushPending(coloredWriter, rawWriter); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustFinalize(t *testing.T, lb *LineBuffer, coloredWriter, rawWriter *bufio.Writer) {
+	t.Helper()
+	if err := lb.Finalize(coloredWriter, rawWriter); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestLineBufferProcessCompleteLines(t *testing.T) {
@@ -35,7 +60,7 @@ func TestLineBufferProcessCompleteLines(t *testing.T) {
 			lb, _, raw, coloredWriter, rawWriter := testBuffer(t)
 			for _, chunk := range tt.chunks {
 				lb.Append([]byte(chunk))
-				lb.ProcessCompleteLines(coloredWriter, rawWriter)
+				mustProcess(t, lb, coloredWriter, rawWriter)
 			}
 			_ = coloredWriter.Flush()
 			_ = rawWriter.Flush()
@@ -49,7 +74,7 @@ func TestLineBufferProcessCompleteLines(t *testing.T) {
 func TestLineBufferFinalizeWithoutNewline(t *testing.T) {
 	lb, _, raw, coloredWriter, rawWriter := testBuffer(t)
 	lb.Append([]byte("final line"))
-	lb.Finalize(coloredWriter, rawWriter)
+	mustFinalize(t, lb, coloredWriter, rawWriter)
 	_ = rawWriter.Flush()
 	if raw.String() != "final line" {
 		t.Fatalf("raw output = %q, want %q", raw.String(), "final line")
@@ -59,12 +84,12 @@ func TestLineBufferFinalizeWithoutNewline(t *testing.T) {
 func TestLineBufferRepeatedPartialFlushes(t *testing.T) {
 	lb, _, raw, coloredWriter, rawWriter := testBuffer(t)
 	lb.Append([]byte("par"))
-	lb.FlushPending(coloredWriter, rawWriter)
+	mustFlushPending(t, lb, coloredWriter, rawWriter)
 	lb.Append([]byte("tial"))
-	lb.FlushPending(coloredWriter, rawWriter)
+	mustFlushPending(t, lb, coloredWriter, rawWriter)
 	lb.Append([]byte(" line"))
-	lb.FlushPending(coloredWriter, rawWriter)
-	lb.Finalize(coloredWriter, rawWriter)
+	mustFlushPending(t, lb, coloredWriter, rawWriter)
+	mustFinalize(t, lb, coloredWriter, rawWriter)
 	_ = rawWriter.Flush()
 	if raw.String() != "partial line" {
 		t.Fatalf("raw output = %q, want %q", raw.String(), "partial line")
@@ -74,9 +99,9 @@ func TestLineBufferRepeatedPartialFlushes(t *testing.T) {
 func TestLineBufferCRLFWithPartialFlush(t *testing.T) {
 	lb, _, raw, coloredWriter, rawWriter := testBuffer(t)
 	lb.Append([]byte("line\r"))
-	lb.FlushPending(coloredWriter, rawWriter)
+	mustFlushPending(t, lb, coloredWriter, rawWriter)
 	lb.Append([]byte("\n"))
-	lb.ProcessCompleteLines(coloredWriter, rawWriter)
+	mustProcess(t, lb, coloredWriter, rawWriter)
 	if err := coloredWriter.Flush(); err != nil {
 		t.Fatalf("flush colored writer: %v", err)
 	}
@@ -92,7 +117,7 @@ func TestLineBufferSplitCRLFWithoutPartialFlush(t *testing.T) {
 	lb, _, raw, coloredWriter, rawWriter := testBuffer(t)
 	lb.Append([]byte("line\r"))
 	lb.Append([]byte("\n"))
-	lb.ProcessCompleteLines(coloredWriter, rawWriter)
+	mustProcess(t, lb, coloredWriter, rawWriter)
 	if err := rawWriter.Flush(); err != nil {
 		t.Fatalf("flush raw writer: %v", err)
 	}
@@ -104,9 +129,9 @@ func TestLineBufferSplitCRLFWithoutPartialFlush(t *testing.T) {
 func TestLineBufferLFPartialFlushPreserved(t *testing.T) {
 	lb, _, raw, coloredWriter, rawWriter := testBuffer(t)
 	lb.Append([]byte("line"))
-	lb.FlushPending(coloredWriter, rawWriter)
+	mustFlushPending(t, lb, coloredWriter, rawWriter)
 	lb.Append([]byte("\n"))
-	lb.ProcessCompleteLines(coloredWriter, rawWriter)
+	mustProcess(t, lb, coloredWriter, rawWriter)
 	if err := rawWriter.Flush(); err != nil {
 		t.Fatalf("flush raw writer: %v", err)
 	}
@@ -118,7 +143,7 @@ func TestLineBufferLFPartialFlushPreserved(t *testing.T) {
 func TestLineBufferStandaloneCRPreserved(t *testing.T) {
 	lb, _, raw, coloredWriter, rawWriter := testBuffer(t)
 	lb.Append([]byte("line\r"))
-	lb.FlushPending(coloredWriter, rawWriter)
+	mustFlushPending(t, lb, coloredWriter, rawWriter)
 	if err := rawWriter.Flush(); err != nil {
 		t.Fatalf("flush raw writer: %v", err)
 	}
@@ -130,7 +155,7 @@ func TestLineBufferStandaloneCRPreserved(t *testing.T) {
 func TestLineBufferTrailingCRFinalization(t *testing.T) {
 	lb, _, raw, coloredWriter, rawWriter := testBuffer(t)
 	lb.Append([]byte("line\r"))
-	lb.Finalize(coloredWriter, rawWriter)
+	mustFinalize(t, lb, coloredWriter, rawWriter)
 	if err := coloredWriter.Flush(); err != nil {
 		t.Fatalf("flush colored writer: %v", err)
 	}
@@ -145,10 +170,89 @@ func TestLineBufferTrailingCRFinalization(t *testing.T) {
 func TestLineBufferFlushPendingAllowsNilWriters(t *testing.T) {
 	lb, _, raw, _, rawWriter := testBuffer(t)
 	lb.Append([]byte("pending"))
-	lb.FlushPending(nil, rawWriter)
-	lb.FlushPending(nil, nil)
+	mustFlushPending(t, lb, nil, rawWriter)
+	mustFlushPending(t, lb, nil, nil)
 	_ = rawWriter.Flush()
 	if raw.String() != "pending" {
 		t.Fatalf("raw output = %q, want %q", raw.String(), "pending")
+	}
+}
+
+var errLineBufferWriter = errors.New("line buffer writer failed")
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errLineBufferWriter }
+
+func TestLineBufferPropagatesWriterErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*LineBuffer, *bufio.Writer, *bufio.Writer) error
+	}{
+		{"process complete lines", func(lb *LineBuffer, colored, raw *bufio.Writer) error {
+			lb.Append([]byte("line\n"))
+			return lb.ProcessCompleteLines(colored, raw)
+		}},
+		{"flush pending", func(lb *LineBuffer, colored, raw *bufio.Writer) error {
+			lb.Append([]byte("pending"))
+			return lb.FlushPending(colored, raw)
+		}},
+		{"finalize", func(lb *LineBuffer, colored, raw *bufio.Writer) error {
+			lb.Append([]byte("final"))
+			return lb.Finalize(colored, raw)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, err := renderer.New(config.GetDefaultConfig(), theme.GetDefaultTheme())
+			if err != nil {
+				t.Fatal(err)
+			}
+			lb := NewLineBuffer(r)
+			writer := bufio.NewWriterSize(failingWriter{}, 1)
+			if err := tt.call(lb, bufio.NewWriter(bytes.NewBuffer(nil)), writer); !errors.Is(err, errLineBufferWriter) {
+				t.Fatalf("error = %v, want %v", err, errLineBufferWriter)
+			}
+		})
+	}
+}
+
+func TestLineBufferPropagatesRenderErrors(t *testing.T) {
+	cfg := config.GetDefaultConfig()
+	pattern := regexp.MustCompile("match")
+	cfg.UserSyntax = []proto.Syntax{{
+		Group:   "UserPattern",
+		Pattern: proto.Pattern{Regexp: pattern},
+	}}
+	r, err := renderer.New(cfg, theme.GetDefaultTheme())
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(r.Theme.HighlightMap, "UserMatchLineBackground")
+
+	tests := []struct {
+		name string
+		call func(*LineBuffer, *bufio.Writer, *bufio.Writer) error
+	}{
+		{"process complete lines", func(lb *LineBuffer, colored, raw *bufio.Writer) error {
+			lb.Append([]byte("match\n"))
+			return lb.ProcessCompleteLines(colored, raw)
+		}},
+		{"flush pending", func(lb *LineBuffer, colored, raw *bufio.Writer) error {
+			lb.Append([]byte("match"))
+			return lb.FlushPending(colored, raw)
+		}},
+		{"finalize", func(lb *LineBuffer, colored, raw *bufio.Writer) error {
+			lb.Append([]byte("match"))
+			return lb.Finalize(colored, raw)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lb := NewLineBuffer(r)
+			if err := tt.call(lb, bufio.NewWriter(io.Discard), bufio.NewWriter(io.Discard)); err == nil {
+				t.Fatal("render error was not propagated")
+			}
+		})
 	}
 }

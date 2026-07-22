@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"regexp"
 	"runtime/pprof"
-	"sync"
 	"syscall"
 	"time"
 
@@ -151,76 +150,73 @@ to make log analysis easier in the terminal.`,
 			}
 		}()
 
-		// Set up line buffer reader
-		var outputMu sync.Mutex
+		// Set up line buffer reader. The command goroutine owns the line buffer
+		// and output writers; all events are handled in the loop below.
 		chunkCh := reader.ReadChunks(bufferedInput)
 		lb := reader.NewLineBuffer(renderer)
 
+		// End gracefully on signal
+		signalCh := make(chan os.Signal, 1)
+		signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+		defer signal.Stop(signalCh)
+
 		// Flush periodically to ensure timely output for real-time streams, only when reading from stdin
+		var tickerCh <-chan time.Time
 		if flags.InputFile == "" {
 			ticker := time.NewTicker(500 * time.Millisecond)
+			tickerCh = ticker.C
 			defer ticker.Stop()
-			stopTicker := make(chan struct{})
-			defer close(stopTicker)
-			go func() {
-				for {
-					select {
-					case <-stopTicker:
-						return
-					case <-ticker.C:
-						outputMu.Lock()
-						if isStderrTerminal {
-							lb.FlushPending(coloredOutput, rawOutput)
-						} else {
-							lb.FlushPending(nil, rawOutput)
-						}
-						coloredOutput.Flush()
-						rawOutput.Flush()
-						outputMu.Unlock()
-					}
-				}
-			}()
 		}
-
-		// Handle interrupt signal to flush output before exiting
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-		stopSignal := make(chan struct{})
-		defer func() {
-			signal.Stop(c)
-			close(stopSignal)
-		}()
-		go func() {
-			select {
-			case <-stopSignal:
-				return
-			case <-c:
-				outputMu.Lock()
-				if isStderrTerminal {
-					lb.FlushPending(coloredOutput, rawOutput)
-				} else {
-					lb.FlushPending(nil, rawOutput)
-				}
-				coloredOutput.Flush()
-				rawOutput.Flush()
-				outputMu.Unlock()
-			}
-		}()
 
 		// Main log processing loop
-		for chunk := range chunkCh {
-			outputMu.Lock()
-			lb.Append(chunk)
-			lb.ProcessCompleteLines(coloredOutput, rawOutput)
-			outputMu.Unlock()
+	inputLoop:
+		for {
+			select {
+			case chunk, ok := <-chunkCh:
+				if !ok {
+					break inputLoop
+				}
+				lb.Append(chunk)
+				if err := lb.ProcessCompleteLines(coloredOutput, rawOutput); err != nil {
+					return fmt.Errorf("write output: %w", err)
+				}
+			case <-tickerCh:
+				var err error
+				if isStderrTerminal {
+					err = lb.FlushPending(coloredOutput, rawOutput)
+				} else {
+					err = lb.FlushPending(nil, rawOutput)
+				}
+				if err != nil {
+					return fmt.Errorf("flush output: %w", err)
+				}
+				if err := coloredOutput.Flush(); err != nil {
+					return fmt.Errorf("flush output: %w", err)
+				}
+				if err := rawOutput.Flush(); err != nil {
+					return fmt.Errorf("flush output: %w", err)
+				}
+			case <-signalCh:
+				// Interrupts retain best-effort behavior: flush what is pending,
+				// but do not turn cleanup failures into asynchronous errors.
+				if isStderrTerminal {
+					_ = lb.FlushPending(coloredOutput, rawOutput)
+				} else {
+					_ = lb.FlushPending(nil, rawOutput)
+				}
+				_ = coloredOutput.Flush()
+				_ = rawOutput.Flush()
+				return nil
+			}
 		}
 
-		outputMu.Lock()
-		lb.Finalize(coloredOutput, rawOutput)
+		var finalizeErr error
+		if err := lb.Finalize(coloredOutput, rawOutput); err != nil {
+			finalizeErr = fmt.Errorf("write output: %w", err)
+		}
 		coloredErr := coloredOutput.Flush()
 		rawErr := rawOutput.Flush()
-		outputMu.Unlock()
-		return errors.Join(coloredErr, rawErr)
+		return errors.Join(finalizeErr, coloredErr, rawErr)
 	},
 }
 
