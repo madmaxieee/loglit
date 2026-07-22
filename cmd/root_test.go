@@ -141,3 +141,15 @@ func TestRootReportsInjectedWriterFailure(t *testing.T) {
 		t.Fatalf("error = %v, want %v", err, errCommandWriter)
 	}
 }
+
+func FuzzRootAcceptsArbitraryInput(f *testing.F) {
+	f.Add([]byte{})
+	f.Add([]byte("one\ntwo\n"))
+	f.Add([]byte{0xff, 0xfe, 0x00, 0x80})
+	f.Add([]byte("unterminated line"))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		resetCLIState(t)
+		_, _ = executeCLI(t, string(data))
+	})
+}

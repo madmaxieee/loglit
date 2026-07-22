@@ -7,6 +7,9 @@ build:
 test:
     go test ./...
 
+fuzz:
+    go test ./cmd -run '^$' -fuzz '^FuzzRootAcceptsArbitraryInput$'
+
 vet:
     go vet ./...
 
