@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -32,6 +33,7 @@ func resetCLIState(t *testing.T) {
 		_ = rootCmd.Flags().Set("append", boolString(oldFlags.AppendMode))
 		_ = rootCmd.Flags().Set("profile", oldFlags.Profile)
 		_ = rootCmd.Flags().Set("color", oldFlags.Color)
+		_ = rootCmd.Flags().Set("no-peek", boolString(oldFlags.NoPeek))
 	})
 	flags = struct {
 		InputFile  string
@@ -39,6 +41,7 @@ func resetCLIState(t *testing.T) {
 		AppendMode bool
 		Profile    string
 		Color      string
+		NoPeek     bool
 	}{Color: "auto"}
 	isTerminal = func(_ io.Writer) bool { return false }
 }
@@ -113,13 +116,16 @@ func TestRootColorModes(t *testing.T) {
 	tests := []struct {
 		name       string
 		mode       string
+		stdoutTTY  bool
 		stderrTTY  bool
-		wantColors bool
+		stdoutAnsi bool
+		stderrAnsi bool
 	}{
-		{name: "auto non-terminal", mode: "auto", wantColors: false},
-		{name: "auto terminal", mode: "auto", stderrTTY: true, wantColors: true},
-		{name: "always non-terminal", mode: "always", wantColors: true},
-		{name: "never terminal", mode: "never", stderrTTY: true, wantColors: false},
+		{name: "auto non-terminal", mode: "auto"},
+		{name: "auto terminal", mode: "auto", stdoutTTY: true, stdoutAnsi: true},
+		{name: "always non-terminal", mode: "always", stdoutAnsi: true},
+		{name: "never terminal", mode: "never", stdoutTTY: true},
+		{name: "peek is independent of color", mode: "never", stderrTTY: true, stderrAnsi: true},
 	}
 
 	for _, tt := range tests {
@@ -130,18 +136,83 @@ func TestRootColorModes(t *testing.T) {
 			rootCmd.SetOut(&stdout)
 			rootCmd.SetErr(&stderr)
 			rootCmd.SetArgs([]string{"--color", tt.mode})
-			isTerminal = func(w io.Writer) bool { return tt.stderrTTY && w == &stderr }
+			isTerminal = func(w io.Writer) bool {
+				return (tt.stdoutTTY && w == &stdout) || (tt.stderrTTY && w == &stderr)
+			}
 			if err := rootCmd.Execute(); err != nil {
 				t.Fatal(err)
 			}
-			gotColors := bytes.Contains(stderr.Bytes(), []byte("\x1b["))
-			if gotColors != tt.wantColors {
-				t.Fatalf("colored output = %v, stderr = %q; want %v", gotColors, stderr.String(), tt.wantColors)
+			if got := bytes.Contains(stdout.Bytes(), []byte("\x1b[")); got != tt.stdoutAnsi {
+				t.Fatalf("stdout colored output = %v, stdout = %q; want %v", got, stdout.String(), tt.stdoutAnsi)
 			}
-			if stdout.String() != "INFO\n" {
-				t.Fatalf("stdout output = %q, want raw output", stdout.String())
+			if got := bytes.Contains(stderr.Bytes(), []byte("\x1b[")); got != tt.stderrAnsi {
+				t.Fatalf("stderr colored output = %v, stderr = %q; want %v", got, stderr.String(), tt.stderrAnsi)
 			}
 		})
+	}
+}
+
+func TestRootNoPeekAndNoAvailableTTY(t *testing.T) {
+	for _, noPeek := range []bool{false, true} {
+		t.Run(fmt.Sprintf("no-peek=%v", noPeek), func(t *testing.T) {
+			resetCLIState(t)
+			var stdout, stderr bytes.Buffer
+			rootCmd.SetIn(bytes.NewBufferString("INFO\n"))
+			rootCmd.SetOut(&stdout)
+			rootCmd.SetErr(&stderr)
+			args := []string{}
+			if noPeek {
+				args = append(args, "--no-peek")
+			}
+			rootCmd.SetArgs(args)
+			isTerminal = func(_ io.Writer) bool { return false }
+			if err := rootCmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if stdout.String() != "INFO\n" || stderr.Len() != 0 {
+				t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+			}
+		})
+	}
+}
+
+func TestRootNoPeekDisablesAvailableTTY(t *testing.T) {
+	resetCLIState(t)
+	var stdout, stderr bytes.Buffer
+	rootCmd.SetIn(bytes.NewBufferString("INFO\n"))
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"--no-peek"})
+	isTerminal = func(w io.Writer) bool { return w == &stderr }
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if stdout.String() != "INFO\n" || stderr.Len() != 0 {
+		t.Fatalf("stdout=%q stderr=%q, want raw stdout and no peek", stdout.String(), stderr.String())
+	}
+}
+
+func TestRootOutputFileIsRawAndPeekIsColored(t *testing.T) {
+	resetCLIState(t)
+	outputPath := filepath.Join(t.TempDir(), "output.log")
+	var stdout, stderr bytes.Buffer
+	rootCmd.SetIn(bytes.NewBufferString("INFO\n"))
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"--output", outputPath, "--color", "always"})
+	isTerminal = func(w io.Writer) bool { return w == &stdout }
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != "INFO\n" {
+		t.Fatalf("file output = %q, want uncolored primary output", contents)
+	}
+	if stdout.String() == "" || !bytes.Contains(stdout.Bytes(), []byte("\x1b[")) || stderr.Len() != 0 {
+		t.Fatalf("stdout=%q stderr=%q, want colored stdout peek only", stdout.String(), stderr.String())
 	}
 }
 

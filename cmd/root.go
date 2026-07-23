@@ -28,6 +28,7 @@ var flags struct {
 	AppendMode bool
 	Profile    string
 	Color      string
+	NoPeek     bool
 }
 
 var isTerminal = func(w io.Writer) bool {
@@ -53,11 +54,8 @@ func openOutputFile(path string, appendMode bool) (*os.File, error) {
 	return os.OpenFile(path, openFlag, 0644)
 }
 
-func rawOutputWriter(path string, stdout io.Writer, stdoutTerminal bool) (*bufio.Writer, io.Closer, error) {
+func rawOutputWriter(path string, stdout io.Writer) (*bufio.Writer, io.Closer, error) {
 	if path == "" {
-		if stdoutTerminal {
-			return bufio.NewWriter(io.Discard), closeFunc(func() error { return nil }), nil
-		}
 		return bufio.NewWriter(stdout), closeFunc(func() error { return nil }), nil
 	}
 
@@ -142,17 +140,33 @@ to make log analysis easier in the terminal.`,
 		}
 		bufferedInput := bufio.NewReader(inputReader)
 
-		// Open the two output channels
+		// The primary output is stdout unless --output selects a file. Peek is a
+		// separate, always-colored terminal view and is only enabled when the
+		// primary destination is not a terminal.
+		stdout := cmd.OutOrStdout()
 		stderr := cmd.ErrOrStderr()
-		isStderrTerminal := isTerminal(stderr)
-		var coloredOutput *bufio.Writer
-		colorsEnabled := flags.Color == "always" || flags.Color == "auto" && isStderrTerminal
-		if colorsEnabled {
-			coloredOutput = bufio.NewWriter(stderr)
+		stdoutTerminal := isTerminal(stdout)
+		primaryIsFile := flags.OutputFile != ""
+		primaryColored := !primaryIsFile && (flags.Color == "always" || flags.Color == "auto" && stdoutTerminal)
+
+		var peek io.Writer
+		if !flags.NoPeek && !primaryIsFile && !stdoutTerminal {
+			if isTerminal(stderr) {
+				peek = stderr
+			}
+		} else if !flags.NoPeek && primaryIsFile {
+			if isTerminal(stdout) {
+				peek = stdout
+			} else if isTerminal(stderr) {
+				peek = stderr
+			}
 		}
 
-		stdout := cmd.OutOrStdout()
-		rawOutput, rawOutputCloser, err := rawOutputWriter(flags.OutputFile, stdout, isTerminal(stdout))
+		var rawTarget io.Writer = stdout
+		if primaryColored {
+			rawTarget = io.Discard
+		}
+		rawOutput, rawOutputCloser, err := rawOutputWriter(flags.OutputFile, rawTarget)
 		if err != nil {
 			return fmt.Errorf("open output: %w", err)
 		}
@@ -161,6 +175,18 @@ to make log analysis easier in the terminal.`,
 				runErr = errors.Join(runErr, fmt.Errorf("close output: %w", err))
 			}
 		}()
+
+		var coloredOutput *bufio.Writer
+		var coloredTargets []io.Writer
+		if primaryColored {
+			coloredTargets = append(coloredTargets, stdout)
+		}
+		if peek != nil {
+			coloredTargets = append(coloredTargets, peek)
+		}
+		if len(coloredTargets) > 0 {
+			coloredOutput = bufio.NewWriter(io.MultiWriter(coloredTargets...))
+		}
 
 		// Set up line buffer reader. The command goroutine owns the line buffer
 		// and output writers; all events are handled in the loop below.
@@ -242,6 +268,7 @@ func init() {
 	rootCmd.Flags().BoolVarP(&flags.AppendMode, "append", "a", false, "Append to the output file instead of overwriting")
 	rootCmd.Flags().StringVar(&flags.Profile, "profile", "", "Enable profiling, write CPU profile data to the specified file")
 	rootCmd.Flags().StringVar(&flags.Color, "color", "auto", "Color mode: auto, always, or never")
+	rootCmd.Flags().BoolVar(&flags.NoPeek, "no-peek", false, "Disable the colored terminal peek output")
 	if err := rootCmd.RegisterFlagCompletionFunc("color", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"auto", "always", "never"}, cobra.ShellCompDirectiveNoFileComp
 	}); err != nil {

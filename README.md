@@ -15,7 +15,7 @@ Loglit is a powerful CLI tool designed to make log analysis easier by adding syn
   - **Code Elements**: Boolean, null, strings, paths.
 - **Input Flexibility**: Reads from standard input (stdin) or files.
 - **Custom Patterns**: Highlight specific terms or patterns using regex arguments.
-- **Output Handling**: Writes highlighted output to `stderr` (preserving stdout for piping if needed) and intelligently handles terminal detection.
+- **Output Handling**: Writes the primary output to stdout, or to the file named by `--output`. A colored terminal peek is shown on another TTY when the primary output is not a terminal.
 
 ## Installation
 
@@ -27,11 +27,13 @@ go install github.com/madmaxieee/loglit@latest
 
 ### Basic Usage
 
-It writes highlighted output to stderr and raw output to stdout. This means you can "peek" highlighted logs in your terminal while simultaneously piping the clean raw logs to a file or another tool:
+By default, loglit writes its primary output to stdout. When stdout is not a terminal, it can also show a colored "peek" on stderr while keeping stdout suitable for piping:
 
 ```bash
 tail -f app.log | loglit > clean_logs.txt
 ```
+
+Use `--no-peek` to disable the terminal peek. `--color=auto` colors stdout only when stdout is a terminal; `--color=always` and `--color=never` force the primary stdout color. Output written with `--output` is always uncolored, while its peek (if a terminal is available) is always colored.
 
 Read directly from a file:
 
