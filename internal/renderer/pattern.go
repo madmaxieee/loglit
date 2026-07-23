@@ -12,10 +12,14 @@ func findPatternMatches(
 	syntaxList []proto.Syntax,
 	highlights map[string]*style.Highlight,
 	text string,
+	facts proto.LineFacts,
 ) error {
 	for _, syn := range syntaxList {
 		p := syn.Pattern
 		if !p.HasValue() {
+			continue
+		}
+		if !p.CanRun(facts) {
 			continue
 		}
 		hl, ok := highlights[syn.Group]

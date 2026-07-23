@@ -79,11 +79,13 @@ type Match struct {
 }
 
 func (r Renderer) Render(text string) (string, error) {
+	facts := proto.MakeLineFacts(text)
 	builtInLowerMatches, err := findMatches(
 		r.Config.BuiltInSyntaxLower,
 		r.Theme.HighlightMap,
 		r.builtinLowerKeywordMap,
 		text,
+		facts,
 	)
 	if err != nil {
 		return text, err
@@ -94,6 +96,7 @@ func (r Renderer) Render(text string) (string, error) {
 		r.Theme.HighlightMap,
 		r.builtinKeywordMap,
 		text,
+		facts,
 	)
 	if err != nil {
 		return text, err
@@ -106,6 +109,7 @@ func (r Renderer) Render(text string) (string, error) {
 		r.Theme.HighlightMap,
 		r.userKeywordMap,
 		text,
+		facts,
 	)
 	if err != nil {
 		return text, err
@@ -149,11 +153,12 @@ func findMatches(
 	highlights map[string]*style.Highlight,
 	keywordMap map[string]*style.Highlight,
 	text string,
+	facts proto.LineFacts,
 ) (MatchLayer, error) {
 	var matches MatchLayer
 	var err error
 
-	err = findPatternMatches(&matches, syntaxList, highlights, text)
+	err = findPatternMatches(&matches, syntaxList, highlights, text, facts)
 	if err != nil {
 		return nil, err
 	}

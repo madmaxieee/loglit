@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strings"
+
 	"github.com/madmaxieee/loglit/internal/proto"
 	"github.com/madmaxieee/loglit/internal/style"
 	"github.com/madmaxieee/loglit/internal/utils"
@@ -59,58 +61,90 @@ var DefaultConfig = Config{
 	BuiltInSyntaxLower: []syntax{
 		// symbols
 		{
-			Group:   "LogSymbol",
-			Pattern: proto.MustCompile(`[!@#$%^&*;:?=]`),
+			Group: "LogSymbol",
+			Pattern: proto.MustCompileWithGate(
+				`[!@#$%^&*;:?=]`,
+				func(f proto.LineFacts) bool { return f.HasSymbol },
+			),
 		},
 
 		// string
 		{
-			Group:   "LogString",
-			Pattern: proto.MustCompile(`'([^'\\]|\\.)*'`),
+			Group: "LogString",
+			Pattern: proto.MustCompileWithGate(
+				`'([^'\\]|\\.)*'`,
+				func(f proto.LineFacts) bool { return f.HasSingleQuote },
+			),
 		},
 		{
-			Group:   "LogString",
-			Pattern: proto.MustCompile(`"([^"\\]|\\.)*"`),
+			Group: "LogString",
+			Pattern: proto.MustCompileWithGate(
+				`"([^"\\]|\\.)*"`,
+				func(f proto.LineFacts) bool { return f.HasDoubleQuote },
+			),
 		},
 	},
 
 	BuiltInSyntax: []syntax{
 		// raw \n, \t, \r
 		{
-			Group:   "LogSymbol",
-			Pattern: proto.MustCompile(`\\[ntr]`),
+			Group: "LogSymbol",
+			Pattern: proto.MustCompileWithGate(
+				`\\[ntr]`,
+				func(f proto.LineFacts) bool { return f.HasBackslash },
+			),
 		},
 
 		// separators
 		{
-			Group:   "LogSeparatorLine",
-			Pattern: proto.MustCompile(`(-{3,}|={3,}|#{3,}|\*{3,}|<{3,}|>{3,})`),
+			Group: "LogSeparatorLine",
+			Pattern: proto.MustCompileWithGate(
+				`(-{3,}|={3,}|#{3,}|\*{3,}|<{3,}|>{3,})`,
+				func(f proto.LineFacts) bool { return f.MaxSeparatorRun >= 3 }),
 		},
 
 		// numbers
 		{
-			Group:   "LogNumber",
-			Pattern: proto.MustCompile(`\b\d+\b`),
+			Group: "LogNumber",
+			Pattern: proto.MustCompileWithGate(
+				`\b\d+\b`,
+				func(f proto.LineFacts) bool { return f.HasDigit },
+			),
 		},
 		{
-			Group:   "LogNumberFloat",
-			Pattern: proto.MustCompile(`\b\d+\.\d+([eE][+-]?\d+)?\b`),
+			Group: "LogNumberFloat",
+			Pattern: proto.MustCompileWithGate(
+				`\b\d+\.\d+([eE][+-]?\d+)?\b`,
+				func(f proto.LineFacts) bool { return f.HasDigit && f.HasDot },
+			),
 		},
 		{
-			Group:   "LogNumberBin",
-			Pattern: proto.MustCompile(`\b0[bB][01]+\b`),
+			Group: "LogNumberBin",
+			Pattern: proto.MustCompileWithGate(
+				`\b0[bB][01]+\b`,
+				func(f proto.LineFacts) bool { return f.HasDigit },
+			),
 		},
 		{
-			Group:   "LogNumberOctal",
-			Pattern: proto.MustCompile(`\b0[oO]?[0-7]+\b`),
+			Group: "LogNumberOctal",
+			Pattern: proto.MustCompileWithGate(
+				`\b0[oO]?[0-7]+\b`,
+				func(f proto.LineFacts) bool { return f.HasDigit },
+			),
 		},
 		{
-			Group:   "LogNumberHex",
-			Pattern: proto.MustCompile(`\b0[xX][0-9a-fA-F]+\b`),
+			Group: "LogNumberHex",
+			Pattern: proto.MustCompileWithGate(
+				`\b0[xX][0-9a-fA-F]+\b`,
+				func(f proto.LineFacts) bool { return f.HasDigit },
+			),
 		},
 		{
-			Group:   "LogNumberHex",
-			Pattern: proto.MustCompile(`\b[0-9a-fA-F]{4,}\b`),
+			Group: "LogNumberHex",
+			Pattern: proto.MustCompileWithGate(
+				`\b[0-9a-fA-F]{4,}\b`,
+				func(f proto.LineFacts) bool { return f.MaxHexRun >= 4 },
+			),
 		},
 
 		// constants
@@ -126,40 +160,64 @@ var DefaultConfig = Config{
 		// date and time
 		// MM-DD, DD-MM, MM/DD, DD/MM
 		{
-			Group:   "LogDate",
-			Pattern: proto.MustCompile(`\b\d{2}[-/]\d{2}\b`),
+			Group: "LogDate",
+			Pattern: proto.MustCompileWithGate(
+				`\b\d{2}[-/]\d{2}\b`,
+				func(f proto.LineFacts) bool { return f.MaxDigitRun >= 2 && (f.HasHyphen || f.HasSlash) },
+			),
 		},
 		// YYYY-MM-DD, YYYY/MM/DD, DD-MM-YYYY, DD/MM/YYYY
 		{
-			Group:   "LogDate",
-			Pattern: proto.MustCompile(`\b\d{4}-\d{2}-\d{2}\b`),
+			Group: "LogDate",
+			Pattern: proto.MustCompileWithGate(
+				`\b\d{4}-\d{2}-\d{2}\b`,
+				func(f proto.LineFacts) bool { return f.MaxDigitRun >= 4 && (f.HasHyphen || f.HasSlash) },
+			),
 		},
 		{
-			Group:   "LogDate",
-			Pattern: proto.MustCompile(`\b\d{4}/\d{2}/\d{2}\b`),
+			Group: "LogDate",
+			Pattern: proto.MustCompileWithGate(
+				`\b\d{4}/\d{2}/\d{2}\b`,
+				func(f proto.LineFacts) bool { return f.MaxDigitRun >= 4 && (f.HasHyphen || f.HasSlash) },
+			),
 		},
 		{
-			Group:   "LogDate",
-			Pattern: proto.MustCompile(`\b\d{2}-\d{2}-\d{4}\b`),
+			Group: "LogDate",
+			Pattern: proto.MustCompileWithGate(
+				`\b\d{2}-\d{2}-\d{4}\b`,
+				func(f proto.LineFacts) bool { return f.MaxDigitRun >= 4 && (f.HasHyphen || f.HasSlash) },
+			),
 		},
 		{
-			Group:   "LogDate",
-			Pattern: proto.MustCompile(`\b\d{2}/\d{2}/\d{4}\b`),
+			Group: "LogDate",
+			Pattern: proto.MustCompileWithGate(
+				`\b\d{2}/\d{2}/\d{4}\b`,
+				func(f proto.LineFacts) bool { return f.MaxDigitRun >= 4 && (f.HasHyphen || f.HasSlash) },
+			),
 		},
 		// RFC3339
 		{
-			Group:   "LogDate",
-			Pattern: proto.MustCompile(`(?:(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2}(?:\.\d+)?))(Z|[\+-]\d{2}:\d{2})?`),
+			Group: "LogDate",
+			Pattern: proto.MustCompileWithGate(
+				`(?:(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2}(?:\.\d+)?))(Z|[\+-]\d{2}:\d{2})?`,
+				func(f proto.LineFacts) bool { return f.MaxDigitRun >= 4 && strings.Contains(f.Text, "T") },
+			),
 		},
 		// 'Dec 31', 'Dec 31, 2023', 'Dec 31 2023'
 		{
-			Group:   "LogDate",
-			Pattern: proto.MustCompile(`\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}(,? [0-9]{4})?\b`),
+			Group: "LogDate",
+			Pattern: proto.MustCompileWithGate(
+				`\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}(,? [0-9]{4})?\b`,
+				func(f proto.LineFacts) bool { return f.HasDigit && f.HasUpper },
+			),
 		},
 		// '31-Dec-2023', '31 Dec 2023'
 		{
-			Group:   "LogDate",
-			Pattern: proto.MustCompile(`\b\d{1,2}[- ](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[- ]\d{4}\b`),
+			Group: "LogDate",
+			Pattern: proto.MustCompileWithGate(
+				`\b\d{1,2}[- ](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[- ]\d{4}\b`,
+				func(f proto.LineFacts) bool { return f.MaxDigitRun >= 4 && f.HasUpper },
+			),
 		},
 		// weekday string
 		{
@@ -168,8 +226,11 @@ var DefaultConfig = Config{
 		},
 		// 12:34:56, 12:34:56.700000
 		{
-			Group:   "LogTime",
-			Pattern: proto.MustCompile(`\b\d{2}:\d{2}:\d{2}(,\d{1,6}|\.\d{1,6})?\b`),
+			Group: "LogTime",
+			Pattern: proto.MustCompileWithGate(
+				`\b\d{2}:\d{2}:\d{2}(,\d{1,6}|\.\d{1,6})?\b`,
+				func(f proto.LineFacts) bool { return f.MaxDigitRun >= 2 && f.HasColon },
+			),
 		},
 		// AM / PM
 		{
@@ -179,38 +240,64 @@ var DefaultConfig = Config{
 
 		// Duration e.g. 10d20h30m40s, 123.456s, 123ms, 456us, 789ns
 		{
-			Group:   "LogDuration",
-			Pattern: proto.MustCompile(`\b((\d+d)?(\d+h)?(\d+m)?\d+(\.\d+)?[µmun]?s)\b`),
+			Group: "LogDuration",
+			Pattern: proto.MustCompileWithGate(
+				`\b((\d+d)?(\d+h)?(\d+m)?\d+(\.\d+)?[µmun]?s)\b`,
+				func(f proto.LineFacts) bool { return f.HasDigit },
+			),
 		},
 
 		// Objects
 		{
-			Group:   "LogUrl",
-			Pattern: proto.MustCompile(`\bhttps?://\S+`),
+			Group: "LogUrl",
+			Pattern: proto.MustCompileWithGate(
+				`\bhttps?://\S+`,
+				func(f proto.LineFacts) bool {
+					return strings.Contains(f.Text, "http://") || strings.Contains(f.Text, "https://")
+				},
+			),
 		},
 		{
-			Group:   "LogMacAddr",
-			Pattern: proto.MustCompile(`\b[0-9a-fA-F]{2}([:-][0-9a-fA-F]{2}){5}\b`),
+			Group: "LogMacAddr",
+			Pattern: proto.MustCompileWithGate(
+				`\b[0-9a-fA-F]{2}([:-][0-9a-fA-F]{2}){5}\b`,
+				func(f proto.LineFacts) bool { return f.MaxHexRun >= 2 && (f.HasColon || f.HasHyphen) },
+			),
 		},
 		{
-			Group:   "LogIPv4",
-			Pattern: proto.MustCompile(`\b\d{1,3}(\.\d{1,3}){3}(\/\d+)?\b`),
+			Group: "LogIPv4",
+			Pattern: proto.MustCompileWithGate(
+				`\b\d{1,3}(\.\d{1,3}){3}(\/\d+)?\b`,
+				func(f proto.LineFacts) bool { return f.HasDigit && f.DotCount >= 3 },
+			),
 		},
 		{
-			Group:   "LogIPv6",
-			Pattern: proto.MustCompile(`\b[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4}){7}(\/\d+)?\b`),
+			Group: "LogIPv6",
+			Pattern: proto.MustCompileWithGate(
+				`\b[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4}){7}(\/\d+)?\b`,
+				func(f proto.LineFacts) bool { return f.HasColon && f.ColonCount >= 7 },
+			),
 		},
 		{
-			Group:   "LogUUID",
-			Pattern: proto.MustCompile(`\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b`),
+			Group: "LogUUID",
+			Pattern: proto.MustCompileWithGate(
+				`\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b`,
+				func(f proto.LineFacts) bool { return f.MaxHexRun >= 12 && f.HyphenCount >= 4 },
+			),
 		},
 		{
-			Group:   "LogMD5",
-			Pattern: proto.MustCompile(`\b[0-9a-fA-F]{32}\b`),
+			Group: "LogMD5",
+			Pattern: proto.MustCompileWithGate(
+				`\b[0-9a-fA-F]{32}\b`,
+				func(f proto.LineFacts) bool { return f.MaxHexRun >= 32 },
+			),
 		},
 		{
-			Group:   "LogSHA",
-			Pattern: proto.MustCompile(`\b([0-9a-fA-F]{40}|[0-9a-fA-F]{56}|[0-9a-fA-F]{64}|[0-9a-fA-F]{96}|[0-9a-fA-F]{128})\b`),
+			Group: "LogSHA",
+			Pattern: proto.MustCompileWithGate(
+				`\b([0-9a-fA-F]{40}|[0-9a-fA-F]{56}|[0-9a-fA-F]{64}|[0-9a-fA-F]{96}|[0-9a-fA-F]{128})\b`,
+				func(f proto.LineFacts) bool { return f.MaxHexRun >= 40 },
+			),
 		},
 
 		// // POSIX-style path    e.g. '/var/log/system.log', './run.sh', '../a/b', '~/c'.
@@ -301,48 +388,102 @@ var DefaultConfig = Config{
 
 		// Composite log levels e.g. *_INFO
 		{
-			Group:   "LogLvFatal",
-			Pattern: proto.MustCompile(`[A-Z_]+_FATAL\b`),
+			Group: "LogLvFatal",
+			Pattern: proto.MustCompileWithGate(
+				`[A-Z_]+_FATAL\b`,
+				func(f proto.LineFacts) bool {
+					return f.HasUpper && f.HasUnderscore && strings.Contains(f.Text, "FATAL")
+				}),
 		},
 		{
-			Group:   "LogLvEmergency",
-			Pattern: proto.MustCompile(`[A-Z_]+_EMERG(ENCY)?\b`),
+			Group: "LogLvEmergency",
+			Pattern: proto.MustCompileWithGate(
+				`[A-Z_]+_EMERG(ENCY)?\b`,
+				func(f proto.LineFacts) bool {
+					return f.HasUpper && f.HasUnderscore && strings.Contains(f.Text, "EMERG")
+				},
+			),
 		},
 		{
-			Group:   "LogLvAlert",
-			Pattern: proto.MustCompile(`[A-Z_]+_ALERT\b`),
+			Group: "LogLvAlert",
+			Pattern: proto.MustCompileWithGate(
+				`[A-Z_]+_ALERT\b`,
+				func(f proto.LineFacts) bool {
+					return f.HasUpper && f.HasUnderscore && strings.Contains(f.Text, "ALERT")
+				},
+			),
 		},
 		{
-			Group:   "LogLvCritical",
-			Pattern: proto.MustCompile(`[A-Z_]+_CRIT(ICAL)?\b`),
+			Group: "LogLvCritical",
+			Pattern: proto.MustCompileWithGate(
+				`[A-Z_]+_CRIT(ICAL)?\b`,
+				func(f proto.LineFacts) bool {
+					return f.HasUpper && f.HasUnderscore && strings.Contains(f.Text, "CRIT")
+				},
+			),
 		},
 		{
-			Group:   "LogLvError",
-			Pattern: proto.MustCompile(`[A-Z_]+_ERR(OR)?\b`),
+			Group: "LogLvError",
+			Pattern: proto.MustCompileWithGate(
+				`[A-Z_]+_ERR(OR)?\b`,
+				func(f proto.LineFacts) bool {
+					return f.HasUpper && f.HasUnderscore && strings.Contains(f.Text, "ERR")
+				},
+			),
 		},
 		{
-			Group:   "LogLvFail",
-			Pattern: proto.MustCompile(`[A-Z_]+_FAIL(URE)?\b`),
+			Group: "LogLvFail",
+			Pattern: proto.MustCompileWithGate(
+				`[A-Z_]+_FAIL(URE)?\b`,
+				func(f proto.LineFacts) bool {
+					return f.HasUpper && f.HasUnderscore && strings.Contains(f.Text, "FAIL")
+				},
+			),
 		},
 		{
-			Group:   "LogLvWarning",
-			Pattern: proto.MustCompile(`[A-Z_]+_WARN(ING)?\b`),
+			Group: "LogLvWarning",
+			Pattern: proto.MustCompileWithGate(
+				`[A-Z_]+_WARN(ING)?\b`,
+				func(f proto.LineFacts) bool {
+					return f.HasUpper && f.HasUnderscore && strings.Contains(f.Text, "WARN")
+				},
+			),
 		},
 		{
-			Group:   "LogLvNotice",
-			Pattern: proto.MustCompile(`[A-Z_]+_NOTICE\b`),
+			Group: "LogLvNotice",
+			Pattern: proto.MustCompileWithGate(
+				`[A-Z_]+_NOTICE\b`,
+				func(f proto.LineFacts) bool {
+					return f.HasUpper && f.HasUnderscore && strings.Contains(f.Text, "NOTICE")
+				},
+			),
 		},
 		{
-			Group:   "LogLvInfo",
-			Pattern: proto.MustCompile(`[A-Z_]+_INFO\b`),
+			Group: "LogLvInfo",
+			Pattern: proto.MustCompileWithGate(
+				`[A-Z_]+_INFO\b`,
+				func(f proto.LineFacts) bool {
+					return f.HasUpper && f.HasUnderscore && strings.Contains(f.Text, "INFO")
+				},
+			),
 		},
 		{
-			Group:   "LogLvDebug",
-			Pattern: proto.MustCompile(`[A-Z_]+_DEBUG\b`),
+			Group: "LogLvDebug",
+			Pattern: proto.MustCompileWithGate(
+				`[A-Z_]+_DEBUG\b`,
+				func(f proto.LineFacts) bool {
+					return f.HasUpper && f.HasUnderscore && strings.Contains(f.Text, "DEBUG")
+				},
+			),
 		},
 		{
-			Group:   "LogLvTrace",
-			Pattern: proto.MustCompile(`[A-Z_]+_TRACE\b`),
+			Group: "LogLvTrace",
+			Pattern: proto.MustCompileWithGate(
+				`[A-Z_]+_TRACE\b`,
+				func(f proto.LineFacts) bool {
+					return f.HasUpper && f.HasUnderscore && strings.Contains(f.Text, "TRACE")
+				},
+			),
 		},
 	},
 
