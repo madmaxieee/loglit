@@ -1,0 +1,68 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check for new commits
+        id: changes
+        run: |
+          source_sha=$(git rev-parse HEAD)
+          nightly_sha=$(git rev-list -n 1 nightly 2>/dev/null || true)
+          echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
+          if [[ "${source_sha}" == "${nightly_sha}" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.4'
+
+      - name: Run tests
+        if: steps.changes.outputs.changed == 'true'
+        run: go test ./...
+
+      - name: Build snapshot
+        if: steps.changes.outputs.changed == 'true'
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --snapshot --clean
+
+      - name: Replace nightly release
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_SHA: ${{ steps.changes.outputs.source_sha }}
+        run: |
+          gh release delete nightly --yes --cleanup-tag || true
+          gh release create nightly \
+            --target "${SOURCE_SHA}" \
+            --title "Nightly" \
+            --notes "Nightly build from commit ${SOURCE_SHA}." \
+            --prerelease \
+            --latest=false \
+            dist/*.tar.gz dist/checksums.txt
