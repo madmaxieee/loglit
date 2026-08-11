@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"runtime/debug"
 	"runtime/pprof"
 	"syscall"
 	"time"
@@ -29,6 +30,46 @@ var flags struct {
 	Profile    string
 	Color      string
 	NoPeek     bool
+}
+
+var version = "dev"
+
+const shortRevisionLength = 6
+
+func formatVersion(buildVersion string, buildInfo *debug.BuildInfo) string {
+	if buildVersion != "dev" || buildInfo == nil {
+		return buildVersion
+	}
+
+	settings := make(map[string]string, len(buildInfo.Settings))
+	for _, setting := range buildInfo.Settings {
+		settings[setting.Key] = setting.Value
+	}
+	revision, timestamp := settings["vcs.revision"], settings["vcs.time"]
+	if revision == "" || timestamp == "" {
+		return "dev"
+	}
+	commitTime, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		return "dev"
+	}
+	if len(revision) > shortRevisionLength {
+		revision = revision[:shortRevisionLength]
+	}
+
+	formatted := fmt.Sprintf("dev (%s, %s", revision, commitTime.UTC().Format("2006-01-02"))
+	if settings["vcs.modified"] == "true" {
+		formatted += ", dirty"
+	}
+	return formatted + ")"
+}
+
+func currentVersion() string {
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version
+	}
+	return formatVersion(version, buildInfo)
 }
 
 var isTerminal = func(w io.Writer) bool {
@@ -67,8 +108,9 @@ func rawOutputWriter(path string, stdout io.Writer) (*bufio.Writer, io.Closer, e
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "loglit",
-	Short: "Loglit is a CLI tool for syntax highlighting and filtering logs",
+	Use:     "loglit",
+	Short:   "Loglit is a CLI tool for syntax highlighting and filtering logs",
+	Version: currentVersion(),
 	Long: `Loglit reads logs from stdin or a file and applies syntax highlighting
 based on built-in patterns and user-provided regex patterns. It is designed
 to make log analysis easier in the terminal.`,

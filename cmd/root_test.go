@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"testing"
 )
 
@@ -21,6 +22,13 @@ func resetCLIState(t *testing.T) {
 	oldFlags := flags
 	oldIsTerminal := isTerminal
 	oldIn, oldOut, oldErr := rootCmd.InOrStdin(), rootCmd.OutOrStdout(), rootCmd.ErrOrStderr()
+	oldVersionFlag := rootCmd.Flags().Lookup("version")
+	var oldVersionFlagValue string
+	var oldVersionFlagChanged bool
+	if oldVersionFlag != nil {
+		oldVersionFlagValue = oldVersionFlag.Value.String()
+		oldVersionFlagChanged = oldVersionFlag.Changed
+	}
 	t.Cleanup(func() {
 		flags = oldFlags
 		isTerminal = oldIsTerminal
@@ -28,6 +36,15 @@ func resetCLIState(t *testing.T) {
 		rootCmd.SetOut(oldOut)
 		rootCmd.SetErr(oldErr)
 		rootCmd.SetArgs(nil)
+		if versionFlag := rootCmd.Flags().Lookup("version"); versionFlag != nil {
+			if oldVersionFlag == nil {
+				_ = versionFlag.Value.Set("false")
+				versionFlag.Changed = false
+			} else {
+				_ = versionFlag.Value.Set(oldVersionFlagValue)
+				versionFlag.Changed = oldVersionFlagChanged
+			}
+		}
 		_ = rootCmd.Flags().Set("input", oldFlags.InputFile)
 		_ = rootCmd.Flags().Set("output", oldFlags.OutputFile)
 		_ = rootCmd.Flags().Set("append", boolString(oldFlags.AppendMode))
@@ -44,6 +61,10 @@ func resetCLIState(t *testing.T) {
 		NoPeek     bool
 	}{Color: "auto"}
 	isTerminal = func(_ io.Writer) bool { return false }
+	if versionFlag := rootCmd.Flags().Lookup("version"); versionFlag != nil {
+		_ = versionFlag.Value.Set("false")
+		versionFlag.Changed = false
+	}
 }
 
 func boolString(value bool) string {
@@ -75,6 +96,70 @@ func TestRootExecutesWithInjectedNonTTYIO(t *testing.T) {
 	}
 	if output != "one\ntwo\n" {
 		t.Fatalf("output = %q, want input unchanged", output)
+	}
+}
+
+func TestRootPrintsVersion(t *testing.T) {
+	resetCLIState(t)
+	oldVersion := version
+	oldCommandVersion := rootCmd.Version
+	t.Cleanup(func() {
+		version = oldVersion
+		rootCmd.Version = oldCommandVersion
+	})
+	version = "test-version"
+	rootCmd.Version = version
+
+	output, err := executeCLI(t, "", "--version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output != "loglit version test-version\n" {
+		t.Fatalf("output = %q, want %q", output, "loglit version test-version\n")
+	}
+}
+
+func TestFormatVersion(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings []debug.BuildSetting
+		want     string
+	}{
+		{
+			name: "dirty metadata",
+			settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "abcdef1234567890"},
+				{Key: "vcs.time", Value: "2026-08-11T01:02:03-07:00"},
+				{Key: "vcs.modified", Value: "true"},
+			},
+			want: "dev (abcdef, 2026-08-11, dirty)",
+		},
+		{
+			name: "clean metadata",
+			settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "abcdef1234567890"},
+				{Key: "vcs.time", Value: "2026-08-11T01:02:03Z"},
+				{Key: "vcs.modified", Value: "false"},
+			},
+			want: "dev (abcdef, 2026-08-11)",
+		},
+		{
+			name:     "missing metadata",
+			settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "abcdef1234567890"}},
+			want:     "dev",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatVersion("dev", &debug.BuildInfo{Settings: tt.settings}); got != tt.want {
+				t.Fatalf("formatVersion() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	if got := formatVersion("1.2.3", &debug.BuildInfo{Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "ignored"}}}); got != "1.2.3" {
+		t.Fatalf("release version = %q, want linker-injected version unchanged", got)
 	}
 }
 
